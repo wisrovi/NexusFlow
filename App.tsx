@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   User, Role, Worker, Project, Team, Task, TaskStatus 
 } from './types';
@@ -9,7 +9,7 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save
+  Pencil, X, Save, ClipboardList, Filter, Layers
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -40,7 +40,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
 
   // UI State
-  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS'>('DASHBOARD');
+  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TASKS'>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // --- Auth Handlers ---
@@ -80,6 +80,9 @@ export default function App() {
   const addTask = (task: Task) => setTasks([...tasks, task]);
   const editTaskDetails = (updatedTask: Task) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+  };
+  const deleteTask = (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
   // --- Renders ---
@@ -164,6 +167,30 @@ export default function App() {
             </button>
             
             <button 
+              onClick={() => setView('PROJECTS')}
+              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
+                ${view === 'PROJECTS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
+                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
+              `}
+              title="Proyectos"
+            >
+              <div className="min-w-[20px]"><FolderKanban size={20} /></div>
+              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Proyectos</span>
+            </button>
+
+            <button 
+              onClick={() => setView('TASKS')}
+              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
+                ${view === 'TASKS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
+                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
+              `}
+              title="Tareas"
+            >
+              <div className="min-w-[20px]"><ClipboardList size={20} /></div>
+              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Tareas</span>
+            </button>
+            
+            <button 
               onClick={() => setView('WORKERS')}
               className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
                 ${view === 'WORKERS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
@@ -175,17 +202,6 @@ export default function App() {
               <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Trabajadores</span>
             </button>
             
-            <button 
-              onClick={() => setView('PROJECTS')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
-                ${view === 'PROJECTS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
-                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
-              `}
-              title="Proyectos"
-            >
-              <div className="min-w-[20px]"><FolderKanban size={20} /></div>
-              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Proyectos</span>
-            </button>
           </nav>
 
           <div className="p-4 border-t border-slate-800">
@@ -211,6 +227,7 @@ export default function App() {
               {view === 'DASHBOARD' && 'Mapa de Diagnóstico'}
               {view === 'WORKERS' && 'Directorio de Personal'}
               {view === 'PROJECTS' && 'Gestión de Proyectos'}
+              {view === 'TASKS' && 'Gestión y Organización de Tareas'}
             </h1>
             <p className="text-slate-500 text-sm mt-1">
               Vista activa: <span className="font-medium text-blue-600">{currentUser.role === 'ADMIN' ? 'Control Total' : 'Solo Lectura'}</span>
@@ -272,6 +289,19 @@ export default function App() {
           />
         )}
 
+        {view === 'TASKS' && (
+          <TasksView 
+            isAdmin={isAdmin}
+            tasks={tasks}
+            projects={projects}
+            teams={teams}
+            workers={workers}
+            addTask={addTask}
+            editTask={editTaskDetails}
+            deleteTask={deleteTask}
+          />
+        )}
+
       </main>
     </div>
   );
@@ -279,6 +309,7 @@ export default function App() {
 
 // --- SUB-VIEWS COMPONENTS ---
 
+// ... (WorkersView and ProjectsView remain unchanged) ...
 const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boolean, workers: Worker[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -752,6 +783,349 @@ const ProjectsView = ({ isAdmin, projects, teams, tasks, workers, updateTaskStat
                 </button>
               </div>
             </div>
+          </Card>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+// --- TASKS VIEW (NEW) ---
+
+interface TasksViewProps {
+  isAdmin: boolean;
+  tasks: Task[];
+  projects: Project[];
+  teams: Team[];
+  workers: Worker[];
+  addTask: (t: Task) => void;
+  editTask: (t: Task) => void;
+  deleteTask: (id: string) => void;
+}
+
+const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, workers, addTask, editTask, deleteTask }) => {
+  const [groupBy, setGroupBy] = useState<'NONE' | 'PROJECT' | 'STATUS' | 'WORKER'>('NONE');
+  const [filterText, setFilterText] = useState('');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  
+  // Form State
+  const [formProjectId, setFormProjectId] = useState('');
+  const [formTeamId, setFormTeamId] = useState('');
+  const [formWorkerId, setFormWorkerId] = useState('');
+  const [formTitle, setFormTitle] = useState('');
+  const [formStatus, setFormStatus] = useState<TaskStatus>('GREEN');
+
+  // Handle Opening Modal (Create vs Edit)
+  const openCreateModal = () => {
+    setEditingTask(null);
+    setFormProjectId(projects[0]?.id || '');
+    setFormTeamId('');
+    setFormWorkerId('');
+    setFormTitle('');
+    setFormStatus('GREEN');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setFormProjectId(task.projectId);
+    setFormTeamId(task.teamId);
+    setFormWorkerId(task.workerId);
+    setFormTitle(task.title);
+    setFormStatus(task.status);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (!formTitle || !formWorkerId || !formTeamId || !formProjectId) return;
+
+    const taskData: Task = {
+      id: editingTask ? editingTask.id : `tsk${Date.now()}`,
+      title: formTitle,
+      workerId: formWorkerId,
+      teamId: formTeamId,
+      projectId: formProjectId,
+      status: formStatus
+    };
+
+    if (editingTask) {
+      editTask(taskData);
+    } else {
+      addTask(taskData);
+    }
+    setIsModalOpen(false);
+  };
+
+  // Derived options for select dropdowns (Cascading)
+  const availableTeams = teams.filter(t => t.projectId === formProjectId);
+  const availableWorkers = useMemo(() => {
+     if(!formTeamId) return [];
+     const team = teams.find(t => t.id === formTeamId);
+     if(!team) return [];
+     return workers.filter(w => team.memberIds.includes(w.id));
+  }, [formTeamId, teams, workers]);
+
+
+  // Grouping Logic
+  const filteredTasks = tasks.filter(t => t.title.toLowerCase().includes(filterText.toLowerCase()));
+  
+  const groupedTasks: Record<string, Task[]> = useMemo(() => {
+    if (groupBy === 'NONE') return { 'Todas las Tareas': filteredTasks };
+    
+    const groups: Record<string, Task[]> = {};
+    
+    filteredTasks.forEach(task => {
+      let key = '';
+      if (groupBy === 'PROJECT') {
+        key = projects.find(p => p.id === task.projectId)?.name || 'Sin Proyecto';
+      } else if (groupBy === 'STATUS') {
+        key = task.status;
+      } else if (groupBy === 'WORKER') {
+        key = workers.find(w => w.id === task.workerId)?.name || 'Sin Asignar';
+      }
+      
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(task);
+    });
+    
+    return groups;
+  }, [filteredTasks, groupBy, projects, workers]);
+
+  return (
+    <div className="space-y-6">
+      
+      {/* Toolbar */}
+      <Card className="p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="relative w-full md:w-64">
+             <Filter className="absolute left-3 top-2.5 text-slate-400" size={18} />
+             <input 
+               placeholder="Filtrar por nombre..." 
+               className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none"
+               value={filterText}
+               onChange={e => setFilterText(e.target.value)}
+             />
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+             <Layers size={18} />
+             <span className="hidden md:inline">Agrupar por:</span>
+             <select 
+               className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none font-medium"
+               value={groupBy}
+               onChange={(e) => setGroupBy(e.target.value as any)}
+             >
+               <option value="NONE">Sin Agrupar</option>
+               <option value="PROJECT">Proyecto</option>
+               <option value="STATUS">Estado</option>
+               <option value="WORKER">Trabajador</option>
+             </select>
+          </div>
+        </div>
+
+        {isAdmin && (
+          <button 
+            onClick={openCreateModal}
+            className="w-full md:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition shadow-sm"
+          >
+            <Plus size={18} /> Nueva Tarea
+          </button>
+        )}
+      </Card>
+
+      {/* Task List */}
+      <div className="space-y-8">
+        {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
+          <div key={groupName} className="space-y-3 animate-in fade-in duration-500">
+            {groupBy !== 'NONE' && (
+              <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2 border-b border-slate-200 pb-2">
+                <span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span>
+                {groupName} <span className="text-slate-400 text-sm font-normal">({groupTasks.length})</span>
+              </h3>
+            )}
+            
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                  <tr>
+                    <th className="px-6 py-3">Estado</th>
+                    <th className="px-6 py-3">Tarea</th>
+                    <th className="px-6 py-3 hidden md:table-cell">Proyecto / Equipo</th>
+                    <th className="px-6 py-3 hidden md:table-cell">Responsable</th>
+                    {isAdmin && <th className="px-6 py-3 text-right">Acciones</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {groupTasks.map(task => {
+                    const project = projects.find(p => p.id === task.projectId);
+                    const team = teams.find(t => t.id === task.teamId);
+                    const worker = workers.find(w => w.id === task.workerId);
+
+                    return (
+                      <tr key={task.id} className="hover:bg-slate-50 transition group">
+                        <td className="px-6 py-4 w-24">
+                          <Badge status={task.status} />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-slate-800">{task.title}</div>
+                          {task.status === 'RED' && (
+                            <div className="text-xs text-red-500 mt-1 flex items-center gap-1 font-medium">
+                              <AlertTriangle size={12} /> {task.blockReason}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 hidden md:table-cell">
+                          <div className="text-sm text-slate-900 font-medium">{project?.name}</div>
+                          <div className="text-xs text-slate-500">{team?.name}</div>
+                        </td>
+                        <td className="px-6 py-4 hidden md:table-cell">
+                           <div className="flex items-center gap-2">
+                             <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                               {worker?.name.charAt(0)}
+                             </div>
+                             <div className="text-sm text-slate-600">{worker?.name}</div>
+                           </div>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 text-right">
+                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <button 
+                                 onClick={() => openEditModal(task)}
+                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                               >
+                                 <Pencil size={16} />
+                               </button>
+                               <button 
+                                 onClick={() => deleteTask(task.id)}
+                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                               >
+                                 <Trash2 size={16} />
+                               </button>
+                             </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {groupTasks.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* CREATE / EDIT MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-lg p-6 animate-in zoom-in duration-200">
+             <div className="flex justify-between items-center mb-6">
+               <h3 className="text-xl font-bold text-slate-800">
+                 {editingTask ? 'Editar Tarea' : 'Crear Nueva Tarea'}
+               </h3>
+               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                 <X size={24} />
+               </button>
+             </div>
+
+             <div className="space-y-4">
+                <div>
+                   <label className="block text-sm font-medium mb-1">Título de la Tarea</label>
+                   <input 
+                     className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                     placeholder="Ej: Implementar Login"
+                     value={formTitle}
+                     onChange={e => setFormTitle(e.target.value)}
+                   />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Proyecto</label>
+                    <select 
+                      className="w-full p-2 border border-slate-300 rounded bg-white"
+                      value={formProjectId}
+                      onChange={e => {
+                        setFormProjectId(e.target.value);
+                        setFormTeamId(''); // Reset dependency
+                        setFormWorkerId(''); // Reset dependency
+                      }}
+                      disabled={!!editingTask} // Usually project doesn't change easily, but editable if needed. Let's lock it for edit simplicity or enable. I'll enable logic but careful with deps.
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Equipo (Pareja)</label>
+                    <select 
+                      className="w-full p-2 border border-slate-300 rounded bg-white"
+                      value={formTeamId}
+                      onChange={e => {
+                        setFormTeamId(e.target.value);
+                        setFormWorkerId(''); // Reset dependency
+                      }}
+                      disabled={!formProjectId}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {availableTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                   <label className="block text-sm font-medium mb-1">Trabajador Responsable</label>
+                   <select 
+                      className="w-full p-2 border border-slate-300 rounded bg-white"
+                      value={formWorkerId}
+                      onChange={e => setFormWorkerId(e.target.value)}
+                      disabled={!formTeamId}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRole})</option>)}
+                    </select>
+                    {!formTeamId && formProjectId && <p className="text-xs text-amber-600 mt-1">Selecciona un equipo primero.</p>}
+                </div>
+
+                {editingTask && (
+                   <div>
+                     <label className="block text-sm font-medium mb-1">Estado</label>
+                     <div className="flex gap-4">
+                        {(['GREEN', 'YELLOW', 'RED'] as TaskStatus[]).map(s => (
+                           <label key={s} className="flex items-center gap-2 cursor-pointer">
+                              <input 
+                                type="radio" 
+                                name="status" 
+                                value={s}
+                                checked={formStatus === s}
+                                onChange={() => setFormStatus(s)}
+                              />
+                              <Badge status={s} />
+                           </label>
+                        ))}
+                     </div>
+                   </div>
+                )}
+
+                <div className="flex justify-end gap-3 mt-8">
+                   <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancelar</button>
+                   <button 
+                     onClick={handleSubmit} 
+                     disabled={!formTitle || !formWorkerId}
+                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow disabled:opacity-50"
+                   >
+                     {editingTask ? 'Guardar Cambios' : 'Crear Tarea'}
+                   </button>
+                </div>
+             </div>
           </Card>
         </div>
       )}
