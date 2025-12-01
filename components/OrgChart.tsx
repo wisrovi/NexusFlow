@@ -7,9 +7,10 @@ interface OrgChartProps {
   teams: Team[];
   workers: Worker[];
   tasks: Task[];
+  onNodeClick: (node: GraphNode) => void;
 }
 
-export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, tasks }) => {
+export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, tasks, onNodeClick }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -139,7 +140,22 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
       .enter()
       .append("g")
       .attr("class", "node")
-      .attr("transform", (d: any) => `translate(${d.y},${d.x})`);
+      .attr("transform", (d: any) => `translate(${d.y},${d.x})`)
+      .style("cursor", "pointer")
+      .on("click", (event, d: any) => {
+         event.stopPropagation(); // Prevent zoom trigger if any
+         if (d.data.type !== 'ROOT') {
+            onNodeClick(d.data);
+         }
+      });
+
+    // Add visual hover effect circle behind the card
+    nodes.append("circle")
+      .attr("r", 0)
+      .attr("fill", "rgba(59, 130, 246, 0.1)")
+      .transition()
+      .duration(500)
+      .attr("r", 40);
 
     nodes.append("foreignObject")
       .attr("width", 240)
@@ -147,6 +163,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
       .attr("y", -50) // Center vertically relative to node point
       .attr("x", -10)
       .style("overflow", "visible")
+      .style("pointer-events", "none") // Let clicks pass through to the Group
       .html((d: any) => {
         const { type, name } = d.data;
         const data = d.data.data;
@@ -175,7 +192,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
         
         if (type === 'TEAM') {
            return `
-             <div class="w-[200px] bg-slate-50 border border-slate-200 rounded-full px-4 py-2 flex items-center shadow-sm h-12 mt-4">
+             <div class="w-[200px] bg-slate-50 border border-slate-200 rounded-full px-4 py-2 flex items-center shadow-sm h-12 mt-4 hover:bg-slate-100 transition-colors">
                 <div class="w-2 h-2 rounded-full bg-slate-400 mr-3 shrink-0"></div>
                 <div class="font-semibold text-slate-700 text-sm truncate">${name}</div>
              </div>
@@ -238,13 +255,14 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
         return `<div class="p-2 border">${name}</div>`;
       });
 
-  }, [projects, teams, workers, tasks, dimensions]);
+  }, [projects, teams, workers, tasks, dimensions, onNodeClick]);
 
   return (
     <div ref={wrapperRef} className="w-full h-full bg-slate-50 rounded-xl overflow-hidden relative cursor-grab active:cursor-grabbing group">
       {/* Controls Overlay */}
       <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm border border-slate-200 z-10 flex flex-col items-end gap-1 pointer-events-none">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Controles</span>
+        <span className="text-xs text-slate-600 font-medium">Click en Nodos para Detalles</span>
         <span className="text-xs text-slate-600 font-medium">Scroll para Zoom</span>
         <span className="text-xs text-slate-600 font-medium">Arrastrar para Mover</span>
       </div>

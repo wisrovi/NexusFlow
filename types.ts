@@ -6,10 +6,15 @@ export interface User {
   role: Role;
 }
 
+export interface FunctionalRole {
+  id: string;
+  name: string;
+}
+
 export interface Worker {
   id: string;
   name: string;
-  functionalRole: string; // "Consultor Senior", "Soporte", etc.
+  functionalRole: string; // Now refers to a FunctionalRole name or id
   intensity: number; // 1-10
   externalNotes?: string; // Private to admin
   managerId?: string; // Hierarchy ID
@@ -39,6 +44,8 @@ export interface Task {
   status: TaskStatus;
   teamId: string;
   projectId: string;
+  createdAt: string; // ISO Date String
+  dueDate?: string; // ISO Date String
   // If RED:
   blockReason?: string;
   blockedByWorkerId?: string; // The sub-worker causing the block

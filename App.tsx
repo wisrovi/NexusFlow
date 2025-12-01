@@ -1,31 +1,183 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  User, Role, Worker, Project, Team, Task, TaskStatus 
+  User, Role, Worker, Project, Team, Task, TaskStatus, GraphNode, FunctionalRole
 } from './types';
 import { 
-  INITIAL_PROJECTS, INITIAL_TEAMS, INITIAL_WORKERS, INITIAL_TASKS 
+  INITIAL_PROJECTS, INITIAL_TEAMS, INITIAL_WORKERS, INITIAL_TASKS, INITIAL_FUNCTIONAL_ROLES
 } from './services/mockData';
 import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag
 } from 'lucide-react';
 
 // --- Components Helpers ---
 
 const Card: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ children, className = "", ...props }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`} {...props}>{children}</div>
+  <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 ${className}`} {...props}>{children}</div>
 );
 
 const Badge = ({ status }: { status: TaskStatus }) => {
   const styles = {
-    GREEN: 'bg-green-100 text-green-700 border-green-200',
-    YELLOW: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-    RED: 'bg-red-100 text-red-700 border-red-200 animate-pulse',
+    GREEN: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
+    YELLOW: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800',
+    RED: 'bg-red-100 text-red-700 border-red-200 animate-pulse dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
   };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${styles[status]}`}>{status}</span>;
 };
+
+// --- MODALS ---
+
+const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: () => void, data: { projects: Project[], teams: Team[], workers: Worker[], tasks: Task[] } }) => {
+  if (!node || !node.data) return null;
+
+  const { type, name } = node;
+  const detailData = node.data;
+
+  // Helper content renderers
+  const renderContent = () => {
+    if (type === 'PROJECT') {
+      const proj = detailData as Project;
+      const projTeams = data.teams.filter(t => t.projectId === proj.id);
+      const projTasks = data.tasks.filter(t => t.projectId === proj.id);
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: proj.color }}></div>
+            <span className="text-sm text-slate-500">ID: {proj.id}</span>
+          </div>
+          <p className="text-slate-600 dark:text-slate-300">{proj.description}</p>
+          
+          <div className="grid grid-cols-2 gap-4 mt-4">
+             <div className="bg-slate-50 dark:bg-slate-700 p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold">{projTeams.length}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase">Parejas</div>
+             </div>
+             <div className="bg-slate-50 dark:bg-slate-700 p-3 rounded-lg text-center">
+                <div className="text-2xl font-bold">{projTasks.length}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase">Tareas Totales</div>
+             </div>
+          </div>
+        </div>
+      );
+    }
+    
+    if (type === 'TEAM') {
+      const team = detailData as Team;
+      const members = team.memberIds.map(id => data.workers.find(w => w.id === id)).filter(Boolean);
+      return (
+        <div className="space-y-4">
+          <h4 className="font-bold text-sm uppercase text-slate-500">Miembros de la Pareja</h4>
+          <div className="space-y-2">
+            {members.map(m => (
+              <div key={m!.id} className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-700 rounded border dark:border-slate-600">
+                 <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-600 flex items-center justify-center font-bold text-xs">{m!.name.charAt(0)}</div>
+                 <div>
+                    <div className="font-medium text-sm">{m!.name}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">{m!.functionalRole}</div>
+                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (type === 'WORKER') {
+      const worker = detailData as Worker;
+      const activeTasks = data.tasks.filter(t => t.workerId === worker.id);
+      return (
+        <div className="space-y-4">
+           <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+              <span className="text-sm font-medium">Nivel de Intensidad</span>
+              <span className={`font-bold ${worker.intensity > 7 ? 'text-red-500' : 'text-green-500'}`}>{worker.intensity}/10</span>
+           </div>
+           
+           <div>
+              <h4 className="font-bold text-sm uppercase text-slate-500 mb-2">Tareas Asignadas ({activeTasks.length})</h4>
+              <ul className="space-y-2 max-h-40 overflow-y-auto">
+                 {activeTasks.map(t => (
+                   <li key={t.id} className="text-sm p-2 border border-slate-100 dark:border-slate-600 rounded flex justify-between items-center">
+                      <span className="truncate max-w-[150px]">{t.title}</span>
+                      <Badge status={t.status} />
+                   </li>
+                 ))}
+                 {activeTasks.length === 0 && <li className="text-sm text-slate-400 italic">Sin tareas activas.</li>}
+              </ul>
+           </div>
+           
+           {worker.managerId && (
+             <div className="text-xs text-slate-400 mt-2">
+               Reporta a: <span className="font-medium text-slate-600 dark:text-slate-300">{data.workers.find(w => w.id === worker.managerId)?.name}</span>
+             </div>
+           )}
+        </div>
+      );
+    }
+
+    if (type === 'TASK') {
+      const task = detailData as Task;
+      const assigned = data.workers.find(w => w.id === task.workerId);
+      return (
+        <div className="space-y-4">
+           <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Estado Actual:</span>
+              <Badge status={task.status} />
+           </div>
+           
+           {task.status === 'RED' && (
+             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded text-red-700 dark:text-red-400 text-sm">
+                <strong className="block mb-1 flex items-center gap-1"><AlertTriangle size={14} /> Motivo de Bloqueo:</strong>
+                {task.blockReason}
+             </div>
+           )}
+
+           <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="block text-slate-500 text-xs">Responsable</span>
+                <span className="font-medium">{assigned?.name}</span>
+              </div>
+              <div>
+                <span className="block text-slate-500 text-xs">Vencimiento</span>
+                <span className="font-medium">{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'N/A'}</span>
+              </div>
+           </div>
+        </div>
+      );
+    }
+
+    return <div>Información no disponible</div>;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+      <Card className="w-full max-w-md p-0 overflow-hidden shadow-2xl">
+         <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-between items-center">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Info size={18} className="text-blue-500" />
+              {type === 'WORKER' ? 'Ficha de Miembro' : 
+               type === 'PROJECT' ? 'Detalles de Proyecto' :
+               type === 'TEAM' ? 'Ficha de Pareja' : 'Detalles de Tarea'}
+            </h3>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <X size={20} />
+            </button>
+         </div>
+         <div className="p-6">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-4">{name}</h2>
+            {renderContent()}
+         </div>
+         <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex justify-end">
+            <button onClick={onClose} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-300 dark:hover:bg-slate-600 transition">
+              Cerrar
+            </button>
+         </div>
+      </Card>
+    </div>
+  );
+};
+
 
 // --- MAIN APP ---
 
@@ -38,10 +190,23 @@ export default function App() {
   const [workers, setWorkers] = useState<Worker[]>(INITIAL_WORKERS);
   const [teams, setTeams] = useState<Team[]>(INITIAL_TEAMS);
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [functionalRoles, setFunctionalRoles] = useState<FunctionalRole[]>(INITIAL_FUNCTIONAL_ROLES);
 
   // UI State
-  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TASKS'>('DASHBOARD');
+  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TEAMS' | 'TASKS' | 'ROLES'>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+
+  // Graph Interaction State
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   // --- Auth Handlers ---
   const login = (role: Role) => {
@@ -55,18 +220,6 @@ export default function App() {
   const logout = () => setCurrentUser(null);
 
   // --- CRUD Handlers (Admin Only) ---
-  const updateTaskStatus = (taskId: string, newStatus: TaskStatus, blockData?: { reason: string, blockedBy: string }) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id !== taskId) return t;
-      return {
-        ...t,
-        status: newStatus,
-        blockReason: newStatus === 'RED' ? blockData?.reason : undefined,
-        blockedByWorkerId: newStatus === 'RED' ? blockData?.blockedBy : undefined
-      };
-    }));
-  };
-
   const addWorker = (worker: Worker) => setWorkers([...workers, worker]);
   const editWorker = (updatedWorker: Worker) => {
     setWorkers(prev => prev.map(w => w.id === updatedWorker.id ? updatedWorker : w));
@@ -77,6 +230,11 @@ export default function App() {
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
   };
 
+  const addTeam = (team: Team) => setTeams([...teams, team]);
+  const updateTeam = (updatedTeam: Team) => {
+    setTeams(prev => prev.map(t => t.id === updatedTeam.id ? updatedTeam : t));
+  };
+
   const addTask = (task: Task) => setTasks([...tasks, task]);
   const editTaskDetails = (updatedTask: Task) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
@@ -85,33 +243,47 @@ export default function App() {
     setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
+  const addRole = (role: FunctionalRole) => setFunctionalRoles([...functionalRoles, role]);
+  const editRole = (updatedRole: FunctionalRole) => {
+    setFunctionalRoles(prev => prev.map(r => r.id === updatedRole.id ? updatedRole : r));
+  };
+  const deleteRole = (roleId: string) => {
+    setFunctionalRoles(prev => prev.filter(r => r.id !== roleId));
+  };
+
   // --- Renders ---
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center">
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center p-4 font-sans transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-2xl max-w-md w-full text-center border border-slate-200 dark:border-slate-700">
           <div className="mb-6 flex justify-center">
-            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
                <Shield size={32} />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">NexusFlow</h1>
-          <p className="text-slate-500 mb-8">Sistema de Diagnóstico Organizacional</p>
+          <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-2">NexusFlow</h1>
+          <p className="text-slate-500 dark:text-slate-400 mb-8">Sistema de Diagnóstico Organizacional</p>
           
           <div className="space-y-4">
             <button 
               onClick={() => login('ADMIN')}
-              className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-medium transition flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center justify-center gap-2 shadow-lg"
             >
               <Users size={18} /> Acceder como Administrador
             </button>
             <button 
               onClick={() => login('READER')}
-              className="w-full py-3 px-4 border-2 border-slate-200 hover:border-slate-400 text-slate-600 rounded-lg font-medium transition flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 border-2 border-slate-200 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 text-slate-600 dark:text-slate-300 rounded-lg font-medium transition flex items-center justify-center gap-2"
             >
               <LayoutDashboard size={18} /> Acceder como Lector
             </button>
+          </div>
+          
+          <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+             <button onClick={() => setIsDarkMode(!isDarkMode)} className="text-sm text-slate-400 flex items-center justify-center gap-2 w-full hover:text-slate-600 dark:hover:text-slate-200">
+                {isDarkMode ? <Sun size={14} /> : <Moon size={14} />} {isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+             </button>
           </div>
         </div>
       </div>
@@ -121,13 +293,13 @@ export default function App() {
   const isAdmin = currentUser.role === 'ADMIN';
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col md:flex-row font-sans transition-colors duration-300">
       
       {/* SIDEBAR */}
       <aside 
         className={`
-          bg-slate-900 text-slate-300 flex-shrink-0 flex flex-col 
-          transition-all duration-300 ease-in-out z-20
+          bg-slate-900 dark:bg-slate-900 text-slate-300 flex-shrink-0 flex flex-col 
+          transition-all duration-300 ease-in-out z-20 border-r border-slate-800
           ${isSidebarOpen ? 'w-full md:w-64' : 'w-full md:w-20'}
           md:h-screen md:sticky md:top-0
         `}
@@ -147,61 +319,60 @@ export default function App() {
 
         <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'opacity-100' : 'opacity-100'} ${!isSidebarOpen ? 'hidden md:flex' : 'flex'}`}>
           <div className={`px-6 py-4 transition-all duration-300 ${isSidebarOpen ? 'block' : 'hidden'}`}>
-             <div className="px-3 py-1 bg-slate-800 rounded-full text-xs inline-flex items-center gap-2 w-full overflow-hidden">
+             <div className="px-3 py-1 bg-slate-800 rounded-full text-xs inline-flex items-center gap-2 w-full overflow-hidden border border-slate-700">
               <div className={`w-2 h-2 flex-shrink-0 rounded-full ${isAdmin ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
               <span className="truncate">{currentUser.username}</span>
             </div>
           </div>
 
           <nav className="flex-1 p-4 space-y-2 overflow-hidden">
-            <button 
-              onClick={() => setView('DASHBOARD')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
-                ${view === 'DASHBOARD' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
-                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
-              `}
-              title="Dashboard"
-            >
-              <div className="min-w-[20px]"><LayoutDashboard size={20} /></div>
-              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Dashboard</span>
-            </button>
+            <NavButton 
+              active={view === 'DASHBOARD'} 
+              onClick={() => setView('DASHBOARD')} 
+              icon={<LayoutDashboard size={20} />} 
+              label="Dashboard" 
+              isOpen={isSidebarOpen} 
+            />
             
-            <button 
-              onClick={() => setView('PROJECTS')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
-                ${view === 'PROJECTS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
-                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
-              `}
-              title="Proyectos"
-            >
-              <div className="min-w-[20px]"><FolderKanban size={20} /></div>
-              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Proyectos</span>
-            </button>
+            <NavButton 
+              active={view === 'PROJECTS'} 
+              onClick={() => setView('PROJECTS')} 
+              icon={<FolderKanban size={20} />} 
+              label="Proyectos" 
+              isOpen={isSidebarOpen} 
+            />
 
-            <button 
-              onClick={() => setView('TASKS')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
-                ${view === 'TASKS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
-                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
-              `}
-              title="Tareas"
-            >
-              <div className="min-w-[20px]"><ClipboardList size={20} /></div>
-              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Tareas</span>
-            </button>
+            <NavButton 
+              active={view === 'TEAMS'} 
+              onClick={() => setView('TEAMS')} 
+              icon={<Users size={20} />} 
+              label="Parejas de Ministración" 
+              isOpen={isSidebarOpen} 
+            />
+
+            <NavButton 
+              active={view === 'TASKS'} 
+              onClick={() => setView('TASKS')} 
+              icon={<ClipboardList size={20} />} 
+              label="Tareas" 
+              isOpen={isSidebarOpen} 
+            />
             
-            <button 
-              onClick={() => setView('WORKERS')}
-              className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
-                ${view === 'WORKERS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
-                ${isSidebarOpen ? 'justify-start' : 'justify-center'}
-              `}
-              title="Trabajadores"
-            >
-              <div className="min-w-[20px]"><Users size={20} /></div>
-              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Trabajadores</span>
-            </button>
-            
+            <NavButton 
+              active={view === 'WORKERS'} 
+              onClick={() => setView('WORKERS')} 
+              icon={<UserPlus size={20} />} 
+              label="Miembros" 
+              isOpen={isSidebarOpen} 
+            />
+
+            <NavButton 
+              active={view === 'ROLES'} 
+              onClick={() => setView('ROLES')} 
+              icon={<Tag size={20} />} 
+              label="Roles y Llamamientos" 
+              isOpen={isSidebarOpen} 
+            />
           </nav>
 
           <div className="p-4 border-t border-slate-800">
@@ -223,16 +394,26 @@ export default function App() {
         {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
               {view === 'DASHBOARD' && 'Mapa de Diagnóstico'}
-              {view === 'WORKERS' && 'Directorio de Personal'}
-              {view === 'PROJECTS' && 'Gestión de Proyectos'}
-              {view === 'TASKS' && 'Gestión y Organización de Tareas'}
+              {view === 'WORKERS' && 'Directorio de Miembros'}
+              {view === 'PROJECTS' && 'Portafolio de Proyectos'}
+              {view === 'TEAMS' && 'Parejas de Ministración'}
+              {view === 'TASKS' && 'Gestión de Tareas'}
+              {view === 'ROLES' && 'Gestión de Roles y Llamamientos'}
             </h1>
-            <p className="text-slate-500 text-sm mt-1">
-              Vista activa: <span className="font-medium text-blue-600">{currentUser.role === 'ADMIN' ? 'Control Total' : 'Solo Lectura'}</span>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+              Vista activa: <span className="font-medium text-blue-600 dark:text-blue-400">{currentUser.role === 'ADMIN' ? 'Control Total' : 'Solo Lectura'}</span>
             </p>
           </div>
+          
+          <button 
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className="p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition shadow-sm border border-slate-300 dark:border-slate-700"
+            title={isDarkMode ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro'}
+          >
+            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+          </button>
         </header>
 
         {/* Content Views */}
@@ -241,26 +422,32 @@ export default function App() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="p-4 border-l-4 border-blue-500">
-                <p className="text-sm text-slate-500">Proyectos Activos</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Proyectos Activos</p>
                 <p className="text-2xl font-bold">{projects.length}</p>
               </Card>
               <Card className="p-4 border-l-4 border-red-500">
-                <p className="text-sm text-slate-500">Bloqueos Críticos (ROJO)</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Bloqueos Críticos (ROJO)</p>
                 <p className="text-2xl font-bold text-red-600">{tasks.filter(t => t.status === 'RED').length}</p>
               </Card>
               <Card className="p-4 border-l-4 border-green-500">
-                <p className="text-sm text-slate-500">Personal Activo</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Miembros Activos</p>
                 <p className="text-2xl font-bold">{workers.length}</p>
               </Card>
             </div>
 
             <Card className="p-1 h-[600px] flex flex-col">
-              <div className="p-4 border-b flex justify-between items-center">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
                 <h3 className="font-bold flex items-center gap-2"><Users size={18} /> Árbol de Colaboración</h3>
-                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">D3.js Visualization</span>
+                <span className="text-xs text-slate-400 bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded">Interactivo: Pulsa los Nodos</span>
               </div>
               <div className="flex-1 overflow-hidden relative">
-                 <OrgChart projects={projects} teams={teams} workers={workers} tasks={tasks} />
+                 <OrgChart 
+                   projects={projects} 
+                   teams={teams} 
+                   workers={workers} 
+                   tasks={tasks}
+                   onNodeClick={(node) => setSelectedNode(node)} 
+                 />
               </div>
             </Card>
           </div>
@@ -270,6 +457,7 @@ export default function App() {
           <WorkersView 
             isAdmin={isAdmin} 
             workers={workers} 
+            roles={functionalRoles}
             addWorker={addWorker}
             editWorker={editWorker}
           />
@@ -279,13 +467,19 @@ export default function App() {
           <ProjectsView 
             isAdmin={isAdmin} 
             projects={projects}
-            teams={teams}
-            tasks={tasks}
-            workers={workers}
-            updateTaskStatus={updateTaskStatus}
-            addTask={addTask}
             editProject={editProject}
-            editTaskDetails={editTaskDetails}
+            addProject={addProject}
+          />
+        )}
+
+        {view === 'TEAMS' && (
+          <TeamsView
+            isAdmin={isAdmin}
+            projects={projects}
+            teams={teams}
+            workers={workers}
+            addTeam={addTeam}
+            updateTeam={updateTeam}
           />
         )}
 
@@ -302,15 +496,131 @@ export default function App() {
           />
         )}
 
+        {view === 'ROLES' && (
+          <RolesView 
+            isAdmin={isAdmin}
+            roles={functionalRoles}
+            addRole={addRole}
+            editRole={editRole}
+            deleteRole={deleteRole}
+          />
+        )}
+
       </main>
+
+      {/* GRAPH INTERACTION MODAL */}
+      {selectedNode && (
+        <NodeDetailsModal 
+          node={selectedNode} 
+          onClose={() => setSelectedNode(null)} 
+          data={{ projects, teams, workers, tasks }}
+        />
+      )}
     </div>
   );
 }
 
+const NavButton = ({ active, onClick, icon, label, isOpen }: any) => (
+  <button 
+    onClick={onClick}
+    className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition overflow-hidden whitespace-nowrap 
+      ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'hover:bg-slate-800'}
+      ${isOpen ? 'justify-start' : 'justify-center'}
+    `}
+    title={label}
+  >
+    <div className="min-w-[20px]">{icon}</div>
+    <span className={`transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>{label}</span>
+  </button>
+);
+
 // --- SUB-VIEWS COMPONENTS ---
 
-// ... (WorkersView and ProjectsView remain unchanged) ...
-const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boolean, workers: Worker[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void }) => {
+const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin: boolean, roles: FunctionalRole[], addRole: (r: FunctionalRole) => void, editRole: (r: FunctionalRole) => void, deleteRole: (id: string) => void }) => {
+  const [editingRole, setEditingRole] = useState<FunctionalRole | null>(null);
+  const [roleName, setRoleName] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roleName.trim()) return;
+
+    if (editingRole) {
+      editRole({ ...editingRole, name: roleName });
+      setEditingRole(null);
+    } else {
+      addRole({ id: `role${Date.now()}`, name: roleName });
+    }
+    setRoleName('');
+  };
+
+  const startEdit = (role: FunctionalRole) => {
+    setEditingRole(role);
+    setRoleName(role.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingRole(null);
+    setRoleName('');
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {isAdmin ? (
+        <Card className="p-6">
+          <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">
+            {editingRole ? 'Editar Rol' : 'Crear Nuevo Rol'}
+          </h3>
+          <form onSubmit={handleSubmit} className="flex gap-4">
+            <input 
+              className="flex-1 p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none"
+              placeholder="Nombre del Rol / Llamamiento (ej: Presidente de Quórum)"
+              value={roleName}
+              onChange={e => setRoleName(e.target.value)}
+            />
+            {editingRole && (
+              <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300">
+                Cancelar
+              </button>
+            )}
+            <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition">
+              {editingRole ? 'Actualizar' : 'Agregar Rol'}
+            </button>
+          </form>
+        </Card>
+      ) : (
+        <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 p-4 rounded-lg flex items-center gap-2">
+          <Info size={20} />
+          <span>Vista de solo lectura. Solo el administrador puede gestionar los roles.</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {roles.map(role => (
+          <Card key={role.id} className="p-4 flex justify-between items-center hover:shadow-md transition group">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded text-blue-600 dark:text-blue-400">
+                 <Tag size={18} />
+               </div>
+               <span className="font-medium text-slate-700 dark:text-slate-200">{role.name}</span>
+            </div>
+            {isAdmin && (
+              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => startEdit(role)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-blue-600">
+                  <Pencil size={16} />
+                </button>
+                <button onClick={() => deleteRole(role.id)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-red-600">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdmin: boolean, workers: Worker[], roles: FunctionalRole[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [workerForm, setWorkerForm] = useState<Partial<Worker>>({ intensity: 5 });
@@ -355,37 +665,41 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
         <div className="flex justify-end">
           <button 
             onClick={() => { resetForm(); setShowForm(!showForm); }}
-            className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${showForm ? 'bg-slate-200 text-slate-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${showForm ? 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
           >
-            {showForm ? <><X size={18} /> Cancelar</> : <><Plus size={18} /> Nuevo Trabajador</>}
+            {showForm ? <><X size={18} /> Cancelar</> : <><Plus size={18} /> Nuevo Miembro</>}
           </button>
         </div>
       )}
 
       {showForm && isAdmin && (
-        <Card className="p-6 bg-slate-50 border-blue-200 animate-in slide-in-from-top-4 duration-300">
-          <h3 className="font-bold text-lg mb-4 text-blue-900 border-b border-blue-100 pb-2">
-            {editingId ? 'Editar Trabajador' : 'Registrar Nuevo Talento'}
+        <Card className="p-6 bg-slate-50 dark:bg-slate-800/50 border-blue-200 dark:border-slate-700 animate-in slide-in-from-top-4 duration-300">
+          <h3 className="font-bold text-lg mb-4 text-blue-900 dark:text-blue-400 border-b border-blue-100 dark:border-slate-700 pb-2">
+            {editingId ? 'Editar Miembro' : 'Registrar Nuevo Miembro'}
           </h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Nombre Completo</label>
               <input 
-                className="w-full p-2 border rounded" 
+                className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none" 
                 value={workerForm.name || ''} 
                 onChange={e => setWorkerForm({...workerForm, name: e.target.value})}
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Rol Funcional (Etiqueta)</label>
-              <input 
-                className="w-full p-2 border rounded" 
-                placeholder="Ej: Consultor Senior"
-                value={workerForm.functionalRole || ''} 
-                onChange={e => setWorkerForm({...workerForm, functionalRole: e.target.value})}
-                required
-              />
+              <label className="block text-sm font-medium mb-1">Rol Funcional / Llamamiento</label>
+              <select
+                 className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none" 
+                 value={workerForm.functionalRole || ''}
+                 onChange={e => setWorkerForm({...workerForm, functionalRole: e.target.value})}
+                 required
+              >
+                <option value="">-- Seleccionar Rol --</option>
+                {roles.map(role => (
+                  <option key={role.id} value={role.name}>{role.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Nivel Intensidad (1-10)</label>
@@ -404,7 +718,7 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
             <div>
               <label className="block text-sm font-medium mb-1">Jefe Directo (Jerarquía)</label>
               <select 
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none"
                 value={workerForm.managerId || ''}
                 onChange={e => setWorkerForm({...workerForm, managerId: e.target.value})}
               >
@@ -417,14 +731,14 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Notas de Impacto (Privado)</label>
               <textarea 
-                className="w-full p-2 border rounded h-20"
+                className="w-full p-2 border rounded h-20 dark:bg-slate-700 dark:border-slate-600 outline-none"
                 placeholder="Notas visibles solo para admin..."
                 value={workerForm.externalNotes || ''} 
                 onChange={e => setWorkerForm({...workerForm, externalNotes: e.target.value})}
               />
             </div>
             <div className="md:col-span-2 flex justify-end gap-2 mt-2">
-              <button type="button" onClick={resetForm} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded">Cancelar</button>
+              <button type="button" onClick={resetForm} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded">Cancelar</button>
               <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded font-medium shadow-sm hover:bg-blue-700 flex items-center gap-2">
                 <Save size={18} /> {editingId ? 'Actualizar' : 'Guardar'}
               </button>
@@ -435,12 +749,12 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {workers.map(worker => (
-          <Card key={worker.id} className="p-4 hover:shadow-md transition group relative">
+          <Card key={worker.id} className="p-4 hover:shadow-md transition group relative dark:bg-slate-800">
             {isAdmin && (
               <button 
                 onClick={() => startEdit(worker)}
-                className="absolute top-4 right-12 text-slate-400 hover:text-blue-600 p-1 bg-white/80 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                title="Editar Trabajador"
+                className="absolute top-4 right-12 text-slate-400 hover:text-blue-600 p-1 bg-white/80 dark:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Editar Miembro"
               >
                 <Pencil size={16} />
               </button>
@@ -448,12 +762,12 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
             
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold border border-slate-200">
+                 <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-200 font-bold border border-slate-200 dark:border-slate-600">
                     {worker.name.charAt(0)}
                  </div>
                  <div>
-                    <h3 className="font-bold text-slate-800">{worker.name}</h3>
-                    <span className="inline-block bg-blue-50 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide mt-0.5">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-200">{worker.name}</h3>
+                    <span className="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide mt-0.5">
                       {worker.functionalRole}
                     </span>
                  </div>
@@ -463,15 +777,15 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
               </div>
             </div>
             
-            <div className="mt-4 pt-4 border-t border-slate-100 text-sm text-slate-500 grid grid-cols-2 gap-2">
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 text-sm text-slate-500 dark:text-slate-400 grid grid-cols-2 gap-2">
                <div>
-                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Reporta a</span> 
+                 <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block">Reporta a</span> 
                  {workers.find(w => w.id === worker.managerId)?.name || 'N/A'}
                </div>
             </div>
 
             {isAdmin && worker.externalNotes && (
-              <div className="mt-3 p-2 bg-amber-50 border border-amber-100 rounded text-xs text-amber-900 italic">
+              <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/50 rounded text-xs text-amber-900 dark:text-amber-400 italic">
                 <span className="font-bold not-italic">Nota:</span> {worker.externalNotes}
               </div>
             )}
@@ -482,278 +796,136 @@ const WorkersView = ({ isAdmin, workers, addWorker, editWorker }: { isAdmin: boo
   );
 };
 
-const ProjectsView = ({ isAdmin, projects, teams, tasks, workers, updateTaskStatus, addTask, editProject, editTaskDetails }: any) => {
-  const [selectedProject, setSelectedProject] = useState<string>(projects[0]?.id);
-  const [editingTaskStatus, setEditingTaskStatus] = useState<string | null>(null); // For status/block modal
-  const [editingTaskDetailsId, setEditingTaskDetailsId] = useState<string | null>(null); // For title/assignee modal
-  const [editingProject, setEditingProject] = useState<Project | null>(null); // For project modal
-  
-  // Status/Block State
-  const [blockReason, setBlockReason] = useState('');
-  const [blockerId, setBlockerId] = useState('');
-
-  // Task Details Edit State
-  const [tempTaskTitle, setTempTaskTitle] = useState('');
-  const [tempTaskWorkerId, setTempTaskWorkerId] = useState('');
-
-  // Project Edit State
+const ProjectsView = ({ 
+  isAdmin, projects, editProject, addProject 
+}: any) => {
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [tempProjectName, setTempProjectName] = useState('');
-  const [tempProjectColor, setTempProjectColor] = useState('');
+  const [tempProjectColor, setTempProjectColor] = useState('#3b82f6');
+  const [tempProjectDesc, setTempProjectDesc] = useState('');
 
-  const activeProject = projects.find((p: Project) => p.id === selectedProject);
-  const projectTeams = teams.filter((t: Team) => t.projectId === selectedProject);
-
-  // -- Handlers --
-
-  const handleStatusChange = (taskId: string, status: TaskStatus) => {
-    if (status === 'RED') {
-      setEditingTaskStatus(taskId);
-      setBlockReason('');
-      setBlockerId('');
-    } else {
-      updateTaskStatus(taskId, status);
-    }
-  };
-
-  const confirmBlock = () => {
-    if (editingTaskStatus && blockReason && blockerId) {
-      updateTaskStatus(editingTaskStatus, 'RED', { reason: blockReason, blockedBy: blockerId });
-      setEditingTaskStatus(null);
-    }
-  };
-
-  const openTaskEdit = (task: Task) => {
-    setTempTaskTitle(task.title);
-    setTempTaskWorkerId(task.workerId);
-    setEditingTaskDetailsId(task.id);
-  };
-
-  const saveTaskEdit = () => {
-    const task = tasks.find((t:Task) => t.id === editingTaskDetailsId);
-    if (task && tempTaskTitle && tempTaskWorkerId) {
-      editTaskDetails({ ...task, title: tempTaskTitle, workerId: tempTaskWorkerId });
-      setEditingTaskDetailsId(null);
-    }
+  // Handlers
+  const handleCreateProject = () => {
+    if (!tempProjectName) return;
+    addProject({
+      id: `proj${Date.now()}`,
+      name: tempProjectName,
+      color: tempProjectColor,
+      description: tempProjectDesc || 'Sin descripción'
+    });
+    setIsCreateProjectModalOpen(false);
+    setTempProjectName('');
+    setTempProjectDesc('');
   };
 
   const openProjectEdit = (project: Project) => {
     setEditingProject(project);
     setTempProjectName(project.name);
     setTempProjectColor(project.color);
+    setTempProjectDesc(project.description || '');
   };
 
   const saveProjectEdit = () => {
-    if (editingProject && tempProjectName && tempProjectColor) {
-      editProject({ ...editingProject, name: tempProjectName, color: tempProjectColor });
+    if (editingProject && tempProjectName) {
+      editProject({ 
+        ...editingProject, 
+        name: tempProjectName, 
+        color: tempProjectColor,
+        description: tempProjectDesc
+      });
       setEditingProject(null);
     }
   };
 
   return (
     <div className="space-y-6">
-      
-      {/* Project Tabs & Edit */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-        <div className="flex gap-2 overflow-x-auto pb-2 flex-1 mr-4">
-          {projects.map((p: Project) => (
-            <button
-              key={p.id}
-              onClick={() => setSelectedProject(p.id)}
-              className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition border flex items-center gap-2 ${selectedProject === p.id ? 'bg-white shadow-md border-transparent text-slate-900 ring-1 ring-slate-100' : 'bg-transparent border-slate-300 text-slate-500 hover:bg-slate-100'}`}
-              style={selectedProject === p.id ? { borderLeft: `4px solid ${p.color}` } : {}}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-        
-        {isAdmin && activeProject && (
-          <button 
-            onClick={() => openProjectEdit(activeProject)}
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 px-3 py-2 rounded-lg hover:bg-slate-100 transition"
-          >
-            <Pencil size={16} /> Editar Proyecto
-          </button>
+      <div className="flex justify-end">
+        {isAdmin && (
+           <button 
+             onClick={() => { setTempProjectName(''); setTempProjectColor('#3b82f6'); setIsCreateProjectModalOpen(true); }}
+             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition"
+           >
+             <Plus size={18} /> Nuevo Proyecto
+           </button>
         )}
       </div>
 
-      {/* Kanban Board style for Teams */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {projectTeams.map((team: Team) => (
-          <div key={team.id} className="bg-slate-100 rounded-xl p-4 flex flex-col gap-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-              <h3 className="font-bold text-slate-700">{team.name}</h3>
-              <div className="flex -space-x-2">
-                {team.memberIds.map(mid => {
-                   const w = workers.find((w: Worker) => w.id === mid);
-                   return w ? (
-                     <div key={mid} className="w-6 h-6 rounded-full bg-slate-300 border border-white flex items-center justify-center text-[10px]" title={w.name}>
-                        {w.name.charAt(0)}
-                     </div>
-                   ) : null;
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {tasks.filter((t: Task) => t.teamId === team.id).map((task: Task) => (
-                <Card key={task.id} className={`p-3 border-l-4 group relative ${task.status === 'RED' ? 'border-l-red-500' : task.status === 'YELLOW' ? 'border-l-yellow-400' : 'border-l-green-500'}`}>
-                  
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {projects.map((project: Project) => (
+          <Card key={project.id} className="p-0 overflow-hidden hover:shadow-md transition">
+             <div className="h-2" style={{ backgroundColor: project.color }}></div>
+             <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-white">{project.name}</h3>
                   {isAdmin && (
-                    <button 
-                       onClick={() => openTaskEdit(task)}
-                       className="absolute top-2 right-2 text-slate-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                       title="Editar Tarea"
-                    >
-                      <Pencil size={14} />
+                    <button onClick={() => openProjectEdit(project)} className="text-slate-400 hover:text-blue-500">
+                      <Pencil size={18} />
                     </button>
                   )}
-
-                  <div className="flex justify-between items-start mb-2 pr-6">
-                    <h4 className="font-medium text-sm leading-tight">{task.title}</h4>
-                    <Badge status={task.status} />
-                  </div>
-                  
-                  <div className="text-xs text-slate-500 mb-2">
-                    Asignado a: <span className="font-semibold text-slate-700">{workers.find((w: Worker) => w.id === task.workerId)?.name}</span>
-                  </div>
-
-                  {task.status === 'RED' && (
-                    <div className="bg-red-50 p-2 rounded text-xs text-red-800 mb-2 border border-red-100">
-                      <strong>Bloqueo:</strong> {task.blockReason}
-                      <br />
-                      <span className="opacity-75">Resp: {workers.find((w: Worker) => w.id === task.blockedByWorkerId)?.name || 'Unknown'}</span>
-                    </div>
-                  )}
-
-                  {isAdmin && (
-                    <div className="flex gap-1 justify-end mt-2 pt-2 border-t border-slate-100">
-                      <button onClick={() => handleStatusChange(task.id, 'GREEN')} className="p-1 hover:bg-green-100 rounded text-green-600"><CheckCircle size={14}/></button>
-                      <button onClick={() => handleStatusChange(task.id, 'YELLOW')} className="p-1 hover:bg-yellow-100 rounded text-yellow-600"><Clock size={14}/></button>
-                      <button onClick={() => handleStatusChange(task.id, 'RED')} className="p-1 hover:bg-red-100 rounded text-red-600"><AlertTriangle size={14}/></button>
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
-          </div>
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 min-h-[40px]">{project.description}</p>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }}></div>
+                   <span>ID: {project.id}</span>
+                </div>
+             </div>
+          </Card>
         ))}
       </div>
 
-      {/* --- MODALS --- */}
-
-      {/* 1. Task Blocking Modal */}
-      {editingTaskStatus && (
+      {/* CREATE MODAL */}
+      {isCreateProjectModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 animate-in zoom-in duration-200">
-            <h3 className="text-xl font-bold text-red-600 mb-4 flex items-center gap-2">
-              <AlertTriangle /> Diagnóstico de Bloqueo
-            </h3>
+          <Card className="w-full max-w-sm p-6 animate-in zoom-in duration-200">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Nuevo Proyecto</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Causa del Bloqueo</label>
-                <textarea 
-                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-red-200 outline-none"
-                  rows={3}
-                  placeholder="Describa por qué está detenida la tarea..."
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                />
+                <label className="block text-sm font-medium mb-1">Nombre</label>
+                <input className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempProjectName} onChange={e => setTempProjectName(e.target.value)} placeholder="Ej: Lanzamiento V2" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sub-trabajador Responsable / Bloqueante</label>
-                <select 
-                  className="w-full p-2 border border-slate-300 rounded"
-                  value={blockerId}
-                  onChange={(e) => setBlockerId(e.target.value)}
-                >
-                  <option value="">-- Seleccionar --</option>
-                  {workers.map((w: Worker) => (
-                    <option key={w.id} value={w.id}>{w.name} ({w.functionalRole})</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <textarea className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempProjectDesc} onChange={e => setTempProjectDesc(e.target.value)} placeholder="Breve descripción..." />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Color</label>
+                <div className="flex gap-2 items-center">
+                  <input type="color" className="w-10 h-10 p-1 rounded cursor-pointer" value={tempProjectColor} onChange={e => setTempProjectColor(e.target.value)} />
+                  <span className="text-sm text-slate-500">{tempProjectColor}</span>
+                </div>
               </div>
               <div className="flex justify-end gap-2 mt-4">
-                <button 
-                  onClick={() => setEditingTaskStatus(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  onClick={confirmBlock}
-                  disabled={!blockReason || !blockerId}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                >
-                  Confirmar Bloqueo
-                </button>
+                <button onClick={() => setIsCreateProjectModalOpen(false)} className="px-3 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
+                <button onClick={handleCreateProject} disabled={!tempProjectName} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Crear</button>
               </div>
             </div>
           </Card>
         </div>
       )}
 
-      {/* 2. Task Details Edit Modal */}
-      {editingTaskDetailsId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 animate-in zoom-in duration-200">
-            <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <Pencil size={20} /> Editar Detalles de Tarea
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Título de la Tarea</label>
-                <input 
-                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-200 outline-none"
-                  value={tempTaskTitle}
-                  onChange={(e) => setTempTaskTitle(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Asignar a Trabajador</label>
-                <select 
-                  className="w-full p-2 border border-slate-300 rounded"
-                  value={tempTaskWorkerId}
-                  onChange={(e) => setTempTaskWorkerId(e.target.value)}
-                >
-                  {workers.map((w: Worker) => (
-                    <option key={w.id} value={w.id}>{w.name} - {w.functionalRole}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end gap-2 mt-6">
-                <button 
-                  onClick={() => setEditingTaskDetailsId(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  onClick={saveTaskEdit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  Guardar Cambios
-                </button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* 3. Project Edit Modal */}
+      {/* EDIT MODAL */}
       {editingProject && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <Card className="w-full max-w-md p-6 animate-in zoom-in duration-200">
-            <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
               <FolderKanban size={20} /> Editar Proyecto
             </h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Nombre del Proyecto</label>
                 <input 
-                  className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-200 outline-none"
+                  className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600"
                   value={tempProjectName}
                   onChange={(e) => setTempProjectName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <textarea 
+                  className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600"
+                  value={tempProjectDesc}
+                  onChange={(e) => setTempProjectDesc(e.target.value)}
                 />
               </div>
               <div>
@@ -765,13 +937,12 @@ const ProjectsView = ({ isAdmin, projects, teams, tasks, workers, updateTaskStat
                     value={tempProjectColor}
                     onChange={(e) => setTempProjectColor(e.target.value)}
                   />
-                  <span className="text-sm text-slate-500 font-mono">{tempProjectColor}</span>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mt-6">
                 <button 
                   onClick={() => setEditingProject(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
                 >
                   Cancelar
                 </button>
@@ -779,19 +950,199 @@ const ProjectsView = ({ isAdmin, projects, teams, tasks, workers, updateTaskStat
                   onClick={saveProjectEdit}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
-                  Guardar Proyecto
+                  Guardar Cambios
                 </button>
               </div>
             </div>
           </Card>
         </div>
       )}
-
     </div>
   );
 };
 
-// --- TASKS VIEW (NEW) ---
+// --- TEAMS VIEW (NEW SEPARATED VIEW) ---
+const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: any) => {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id);
+  const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  
+  // Forms
+  const [tempTeamName, setTempTeamName] = useState('');
+  const [tempTeamMembers, setTempTeamMembers] = useState<string[]>([]);
+
+  // Effect to ensure valid selection if projects change
+  useEffect(() => {
+    if (projects.length > 0 && !projects.find((p: Project) => p.id === selectedProjectId)) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
+  const activeProject = projects.find((p: Project) => p.id === selectedProjectId);
+  const projectTeams = teams.filter((t: Team) => t.projectId === selectedProjectId);
+
+  const handleCreateTeam = () => {
+    if(!tempTeamName || !activeProject) return;
+    addTeam({
+      id: `team${Date.now()}`,
+      projectId: activeProject.id,
+      name: tempTeamName,
+      memberIds: []
+    });
+    setIsCreateTeamModalOpen(false);
+    setTempTeamName('');
+  };
+
+  const openEditTeamMembers = (team: Team) => {
+    setEditingTeam(team);
+    setTempTeamMembers([...team.memberIds]);
+  };
+
+  const toggleTeamMember = (workerId: string) => {
+    setTempTeamMembers(prev => 
+      prev.includes(workerId) 
+        ? prev.filter(id => id !== workerId)
+        : [...prev, workerId]
+    );
+  };
+
+  const saveTeamMembers = () => {
+    if (editingTeam) {
+      updateTeam({ ...editingTeam, memberIds: tempTeamMembers });
+      setEditingTeam(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Selector de Contexto */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+         <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-slate-500 uppercase">Proyecto Contexto:</span>
+            <select 
+              className="p-2 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 font-medium"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+            >
+              {projects.map((p: Project) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+         </div>
+
+         {isAdmin && (
+           <button 
+             onClick={() => setIsCreateTeamModalOpen(true)}
+             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition"
+           >
+             <Plus size={18} /> Nueva Pareja/Equipo
+           </button>
+         )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {projectTeams.map((team: Team) => (
+          <Card key={team.id} className="p-6 relative group">
+             <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">{team.name}</h3>
+                {isAdmin && (
+                  <button onClick={() => openEditTeamMembers(team)} className="text-slate-400 hover:text-blue-500 p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition" title="Editar Miembros">
+                     <Settings size={18} />
+                  </button>
+                )}
+             </div>
+             
+             <div className="space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase">Miembros ({team.memberIds.length})</p>
+                {team.memberIds.length > 0 ? (
+                  <div className="space-y-2">
+                    {team.memberIds.map(mid => {
+                      const w = workers.find((wk: Worker) => wk.id === mid);
+                      return w ? (
+                        <div key={mid} className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-700">
+                           <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-bold">
+                              {w.name.charAt(0)}
+                           </div>
+                           <div>
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400">{w.functionalRole}</p>
+                           </div>
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm italic text-slate-400">Sin miembros asignados.</p>
+                )}
+             </div>
+          </Card>
+        ))}
+        {projectTeams.length === 0 && (
+          <div className="col-span-full p-10 text-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+             <Users size={48} className="mx-auto mb-4 opacity-50" />
+             <p>No hay parejas o equipos configurados en este proyecto.</p>
+          </div>
+        )}
+      </div>
+
+       {/* Create Team Modal */}
+       {isCreateTeamModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-sm p-6 animate-in zoom-in duration-200">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Nueva Pareja de Ministración</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Nombre de la Pareja/Equipo</label>
+                <input className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempTeamName} onChange={e => setTempTeamName(e.target.value)} placeholder="Ej: Pareja Delta" />
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setIsCreateTeamModalOpen(false)} className="px-3 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
+                <button onClick={handleCreateTeam} disabled={!tempTeamName} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">Crear</button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Edit Members Modal */}
+      {editingTeam && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-md p-6 animate-in zoom-in duration-200 max-h-[80vh] flex flex-col">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Armar Pareja: {editingTeam.name}</h3>
+            <p className="text-sm text-slate-500 mb-4">Selecciona los miembros. Esto actualizará las conexiones en el grafo.</p>
+            
+            <div className="flex-1 overflow-y-auto border dark:border-slate-700 rounded-lg p-2 space-y-1 mb-4">
+              {workers.map(worker => (
+                <label key={worker.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded cursor-pointer transition">
+                  <input 
+                    type="checkbox" 
+                    checked={tempTeamMembers.includes(worker.id)}
+                    onChange={() => toggleTeamMember(worker.id)}
+                    className="w-4 h-4 text-blue-600 rounded"
+                  />
+                  <div className="flex items-center gap-2">
+                     <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[10px]">{worker.name.charAt(0)}</div>
+                     <div>
+                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{worker.name}</div>
+                       <div className="text-[10px] text-slate-400">{worker.functionalRole}</div>
+                     </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditingTeam(null)} className="px-3 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
+              <button onClick={saveTeamMembers} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Guardar Miembros</button>
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- TASKS VIEW ---
 
 interface TasksViewProps {
   isAdmin: boolean;
@@ -818,6 +1169,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   const [formWorkerId, setFormWorkerId] = useState('');
   const [formTitle, setFormTitle] = useState('');
   const [formStatus, setFormStatus] = useState<TaskStatus>('GREEN');
+  const [formDueDate, setFormDueDate] = useState('');
 
   // Handle Opening Modal (Create vs Edit)
   const openCreateModal = () => {
@@ -827,6 +1179,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormWorkerId('');
     setFormTitle('');
     setFormStatus('GREEN');
+    setFormDueDate('');
     setIsModalOpen(true);
   };
 
@@ -837,6 +1190,8 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormWorkerId(task.workerId);
     setFormTitle(task.title);
     setFormStatus(task.status);
+    // Format date for input type="date"
+    setFormDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
     setIsModalOpen(true);
   };
 
@@ -849,7 +1204,9 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
       workerId: formWorkerId,
       teamId: formTeamId,
       projectId: formProjectId,
-      status: formStatus
+      status: formStatus,
+      createdAt: editingTask ? editingTask.createdAt : new Date().toISOString(),
+      dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined
     };
 
     if (editingTask) {
@@ -905,24 +1262,24 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
              <Filter className="absolute left-3 top-2.5 text-slate-400" size={18} />
              <input 
                placeholder="Filtrar por nombre..." 
-               className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none"
+               className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                value={filterText}
                onChange={e => setFilterText(e.target.value)}
              />
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
              <Layers size={18} />
              <span className="hidden md:inline">Agrupar por:</span>
              <select 
-               className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none font-medium"
+               className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none font-medium dark:bg-slate-700 dark:border-slate-600"
                value={groupBy}
                onChange={(e) => setGroupBy(e.target.value as any)}
              >
                <option value="NONE">Sin Agrupar</option>
                <option value="PROJECT">Proyecto</option>
                <option value="STATUS">Estado</option>
-               <option value="WORKER">Trabajador</option>
+               <option value="WORKER">Miembro</option>
              </select>
           </div>
         </div>
@@ -942,52 +1299,65 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
         {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
           <div key={groupName} className="space-y-3 animate-in fade-in duration-500">
             {groupBy !== 'NONE' && (
-              <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2 border-b border-slate-200 pb-2">
+              <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
                 <span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span>
                 {groupName} <span className="text-slate-400 text-sm font-normal">({groupTasks.length})</span>
               </h3>
             )}
             
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
               <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500 font-semibold">
+                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold">
                   <tr>
                     <th className="px-6 py-3">Estado</th>
                     <th className="px-6 py-3">Tarea</th>
+                    <th className="px-6 py-3 hidden lg:table-cell">Fechas</th>
                     <th className="px-6 py-3 hidden md:table-cell">Proyecto / Equipo</th>
                     <th className="px-6 py-3 hidden md:table-cell">Responsable</th>
                     {isAdmin && <th className="px-6 py-3 text-right">Acciones</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                   {groupTasks.map(task => {
                     const project = projects.find(p => p.id === task.projectId);
                     const team = teams.find(t => t.id === task.teamId);
                     const worker = workers.find(w => w.id === task.workerId);
 
                     return (
-                      <tr key={task.id} className="hover:bg-slate-50 transition group">
+                      <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
                         <td className="px-6 py-4 w-24">
                           <Badge status={task.status} />
                         </td>
                         <td className="px-6 py-4">
-                          <div className="font-medium text-slate-800">{task.title}</div>
+                          <div className="font-medium text-slate-800 dark:text-slate-200">{task.title}</div>
                           {task.status === 'RED' && (
                             <div className="text-xs text-red-500 mt-1 flex items-center gap-1 font-medium">
                               <AlertTriangle size={12} /> {task.blockReason}
                             </div>
                           )}
                         </td>
+                        <td className="px-6 py-4 hidden lg:table-cell text-xs text-slate-500 dark:text-slate-400">
+                           <div title="Creada" className="flex items-center gap-1 mb-1">
+                             <Calendar size={12} className="text-slate-400" /> 
+                             {new Date(task.createdAt).toLocaleDateString()}
+                           </div>
+                           {task.dueDate && (
+                             <div title="Vencimiento" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                               <Clock size={12} />
+                               {new Date(task.dueDate).toLocaleDateString()}
+                             </div>
+                           )}
+                        </td>
                         <td className="px-6 py-4 hidden md:table-cell">
-                          <div className="text-sm text-slate-900 font-medium">{project?.name}</div>
-                          <div className="text-xs text-slate-500">{team?.name}</div>
+                          <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{project?.name}</div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{team?.name}</div>
                         </td>
                         <td className="px-6 py-4 hidden md:table-cell">
                            <div className="flex items-center gap-2">
-                             <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                             <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-200">
                                {worker?.name.charAt(0)}
                              </div>
-                             <div className="text-sm text-slate-600">{worker?.name}</div>
+                             <div className="text-sm text-slate-600 dark:text-slate-300">{worker?.name}</div>
                            </div>
                         </td>
                         {isAdmin && (
@@ -995,13 +1365,13 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                <button 
                                  onClick={() => openEditModal(task)}
-                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-600 rounded transition"
                                >
                                  <Pencil size={16} />
                                </button>
                                <button 
                                  onClick={() => deleteTask(task.id)}
-                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
                                >
                                  <Trash2 size={16} />
                                </button>
@@ -1013,7 +1383,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                   })}
                   {groupTasks.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
+                      <td colSpan={6} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1028,7 +1398,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
           <Card className="w-full max-w-lg p-6 animate-in zoom-in duration-200">
              <div className="flex justify-between items-center mb-6">
-               <h3 className="text-xl font-bold text-slate-800">
+               <h3 className="text-xl font-bold text-slate-800 dark:text-white">
                  {editingTask ? 'Editar Tarea' : 'Crear Nueva Tarea'}
                </h3>
                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -1040,7 +1410,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                 <div>
                    <label className="block text-sm font-medium mb-1">Título de la Tarea</label>
                    <input 
-                     className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                     className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600"
                      placeholder="Ej: Implementar Login"
                      value={formTitle}
                      onChange={e => setFormTitle(e.target.value)}
@@ -1051,14 +1421,14 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                   <div>
                     <label className="block text-sm font-medium mb-1">Proyecto</label>
                     <select 
-                      className="w-full p-2 border border-slate-300 rounded bg-white"
+                      className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600"
                       value={formProjectId}
                       onChange={e => {
                         setFormProjectId(e.target.value);
                         setFormTeamId(''); // Reset dependency
                         setFormWorkerId(''); // Reset dependency
                       }}
-                      disabled={!!editingTask} // Usually project doesn't change easily, but editable if needed. Let's lock it for edit simplicity or enable. I'll enable logic but careful with deps.
+                      disabled={!!editingTask} 
                     >
                       <option value="">-- Seleccionar --</option>
                       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -1067,7 +1437,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                   <div>
                     <label className="block text-sm font-medium mb-1">Equipo (Pareja)</label>
                     <select 
-                      className="w-full p-2 border border-slate-300 rounded bg-white"
+                      className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600"
                       value={formTeamId}
                       onChange={e => {
                         setFormTeamId(e.target.value);
@@ -1081,18 +1451,28 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                   </div>
                 </div>
 
-                <div>
-                   <label className="block text-sm font-medium mb-1">Trabajador Responsable</label>
-                   <select 
-                      className="w-full p-2 border border-slate-300 rounded bg-white"
-                      value={formWorkerId}
-                      onChange={e => setFormWorkerId(e.target.value)}
-                      disabled={!formTeamId}
-                    >
-                      <option value="">-- Seleccionar --</option>
-                      {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRole})</option>)}
-                    </select>
-                    {!formTeamId && formProjectId && <p className="text-xs text-amber-600 mt-1">Selecciona un equipo primero.</p>}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-sm font-medium mb-1">Responsable</label>
+                     <select 
+                        className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600"
+                        value={formWorkerId}
+                        onChange={e => setFormWorkerId(e.target.value)}
+                        disabled={!formTeamId}
+                      >
+                        <option value="">-- Seleccionar --</option>
+                        {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRole})</option>)}
+                      </select>
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium mb-1">Fecha de Finalización</label>
+                     <input 
+                        type="date"
+                        className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600"
+                        value={formDueDate}
+                        onChange={e => setFormDueDate(e.target.value)}
+                      />
+                  </div>
                 </div>
 
                 {editingTask && (
@@ -1116,7 +1496,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                 )}
 
                 <div className="flex justify-end gap-3 mt-8">
-                   <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancelar</button>
+                   <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
                    <button 
                      onClick={handleSubmit} 
                      disabled={!formTitle || !formWorkerId}
