@@ -9,7 +9,7 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -193,7 +193,7 @@ export default function App() {
   const [functionalRoles, setFunctionalRoles] = useState<FunctionalRole[]>(INITIAL_FUNCTIONAL_ROLES);
 
   // UI State
-  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TEAMS' | 'TASKS' | 'ROLES'>('DASHBOARD');
+  const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TEAMS' | 'TASKS' | 'ROLES' | 'SETTINGS' | 'ABOUT'>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
 
@@ -201,6 +201,7 @@ export default function App() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   useEffect(() => {
+    // Force toggle dark mode on body/html
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
     } else {
@@ -325,7 +326,7 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex-1 p-4 space-y-2 overflow-hidden">
+          <nav className="flex-1 p-4 space-y-2 overflow-hidden overflow-y-auto">
             <NavButton 
               active={view === 'DASHBOARD'} 
               onClick={() => setView('DASHBOARD')} 
@@ -373,6 +374,24 @@ export default function App() {
               label="Roles y Llamamientos" 
               isOpen={isSidebarOpen} 
             />
+
+             <div className="my-2 border-t border-slate-800 pt-2"></div>
+
+             <NavButton 
+              active={view === 'SETTINGS'} 
+              onClick={() => setView('SETTINGS')} 
+              icon={<Settings size={20} />} 
+              label="Configuración" 
+              isOpen={isSidebarOpen} 
+            />
+
+             <NavButton 
+              active={view === 'ABOUT'} 
+              onClick={() => setView('ABOUT')} 
+              icon={<Info size={20} />} 
+              label="Acerca de" 
+              isOpen={isSidebarOpen} 
+            />
           </nav>
 
           <div className="p-4 border-t border-slate-800">
@@ -401,6 +420,8 @@ export default function App() {
               {view === 'TEAMS' && 'Parejas de Ministración'}
               {view === 'TASKS' && 'Gestión de Tareas'}
               {view === 'ROLES' && 'Gestión de Roles y Llamamientos'}
+              {view === 'SETTINGS' && 'Configuración del Sistema'}
+              {view === 'ABOUT' && 'Acerca del Creador'}
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
               Vista activa: <span className="font-medium text-blue-600 dark:text-blue-400">{currentUser.role === 'ADMIN' ? 'Control Total' : 'Solo Lectura'}</span>
@@ -506,6 +527,16 @@ export default function App() {
           />
         )}
 
+        {view === 'SETTINGS' && (
+          <SettingsView 
+            data={{ projects, teams, workers, tasks, functionalRoles }}
+          />
+        )}
+
+        {view === 'ABOUT' && (
+          <AboutView />
+        )}
+
       </main>
 
       {/* GRAPH INTERACTION MODAL */}
@@ -535,6 +566,150 @@ const NavButton = ({ active, onClick, icon, label, isOpen }: any) => (
 );
 
 // --- SUB-VIEWS COMPONENTS ---
+
+const SettingsView = ({ data }: { data: any }) => {
+  const handleExport = () => {
+    const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
+      JSON.stringify(data, null, 2)
+    )}`;
+    const link = document.createElement("a");
+    link.href = jsonString;
+    link.download = `NexusFlow_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <Card className="p-6">
+        <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+          <Settings size={24} className="text-slate-400" />
+          Preferencias Generales
+        </h3>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+             <div className="flex items-center gap-3">
+                <Globe size={20} className="text-slate-500" />
+                <div>
+                   <p className="font-medium">Idioma de la Interfaz</p>
+                   <p className="text-xs text-slate-500 dark:text-slate-400">Selecciona el idioma predeterminado</p>
+                </div>
+             </div>
+             <select className="bg-white dark:bg-slate-800 border dark:border-slate-600 rounded p-1 text-sm outline-none">
+                <option>Español</option>
+                <option>English</option>
+             </select>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+             <div className="flex items-center gap-3">
+                <Bell size={20} className="text-slate-500" />
+                <div>
+                   <p className="font-medium">Notificaciones de Sistema</p>
+                   <p className="text-xs text-slate-500 dark:text-slate-400">Alertas sobre bloqueos y tareas</p>
+                </div>
+             </div>
+             <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                <input type="checkbox" name="toggle" id="toggle" className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 checked:right-0 checked:border-green-400"/>
+                <label htmlFor="toggle" className="toggle-label block overflow-hidden h-5 rounded-full bg-slate-300 cursor-pointer"></label>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-6 border-blue-100 dark:border-blue-900">
+         <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-white">
+            <Download size={24} className="text-blue-500" />
+            Copia de Seguridad
+         </h3>
+         <p className="text-slate-600 dark:text-slate-300 text-sm mb-6">
+           Descarga una copia completa de todos los datos actuales del sistema (Proyectos, Miembros, Tareas, etc.) en formato JSON.
+         </p>
+         <button 
+           onClick={handleExport}
+           className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2 shadow-lg transition transform hover:-translate-y-0.5"
+         >
+            <Download size={18} /> Exportar Datos JSON
+         </button>
+      </Card>
+    </div>
+  );
+};
+
+const AboutView = () => {
+  return (
+    <div className="max-w-3xl mx-auto">
+      <Card className="overflow-hidden">
+        <div className="h-32 bg-gradient-to-r from-blue-600 to-indigo-700 relative">
+           <div className="absolute -bottom-16 left-8">
+              <div className="w-32 h-32 rounded-full border-4 border-white dark:border-slate-800 bg-white shadow-xl overflow-hidden flex items-center justify-center">
+                 {/* Placeholder for Profile Image if not available */}
+                 <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">
+                    <UserCheck size={48} />
+                 </div>
+              </div>
+           </div>
+        </div>
+        <div className="pt-20 pb-8 px-8">
+           <h2 className="text-3xl font-bold text-slate-900 dark:text-white">William Rodriguez (Wisrovi)</h2>
+           <p className="text-blue-600 dark:text-blue-400 font-medium text-lg mb-6">Full Stack Developer & System Architect</p>
+           
+           <div className="space-y-6 text-slate-600 dark:text-slate-300">
+              <p>
+                Creador de <strong>NexusFlow</strong>, una solución diseñada para optimizar la gestión de diagnósticos organizacionales y visualización de jerarquías complejas.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <a 
+                   href="https://es.linkedin.com/in/wisrovi-rodriguez" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-3 p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group"
+                 >
+                    <div className="p-2 bg-[#0077b5] text-white rounded-lg">
+                       <Linkedin size={24} />
+                    </div>
+                    <div>
+                       <span className="block font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition">LinkedIn Profile</span>
+                       <span className="text-xs">Conectar profesionalmente</span>
+                    </div>
+                 </a>
+
+                 <a 
+                   href="#" 
+                   className="flex items-center gap-3 p-4 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group"
+                 >
+                    <div className="p-2 bg-slate-900 text-white rounded-lg">
+                       <Github size={24} />
+                    </div>
+                    <div>
+                       <span className="block font-bold text-slate-900 dark:text-white group-hover:text-blue-600 transition">GitHub Portfolio</span>
+                       <span className="text-xs">Ver proyectos de código</span>
+                    </div>
+                 </a>
+              </div>
+
+              <div className="mt-8 p-6 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                 <h4 className="font-bold flex items-center gap-2 mb-3">
+                    <Briefcase size={18} /> Skills & Expertise
+                 </h4>
+                 <div className="flex flex-wrap gap-2">
+                    {['React', 'TypeScript', 'Tailwind CSS', 'D3.js', 'System Architecture', 'UI/UX Design'].map(skill => (
+                      <span key={skill} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-medium text-slate-600 dark:text-slate-400">
+                        {skill}
+                      </span>
+                    ))}
+                 </div>
+              </div>
+           </div>
+        </div>
+      </Card>
+      
+      <div className="text-center mt-8 text-slate-400 text-sm">
+         &copy; {new Date().getFullYear()} NexusFlow. Developed by Wisrovi.
+      </div>
+    </div>
+  );
+};
 
 const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin: boolean, roles: FunctionalRole[], addRole: (r: FunctionalRole) => void, editRole: (r: FunctionalRole) => void, deleteRole: (id: string) => void }) => {
   const [editingRole, setEditingRole] = useState<FunctionalRole | null>(null);
