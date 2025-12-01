@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   User, Role, Worker, Project, Team, Task, TaskStatus, GraphNode, FunctionalRole
 } from './types';
@@ -9,7 +9,7 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -252,6 +252,20 @@ export default function App() {
     setFunctionalRoles(prev => prev.filter(r => r.id !== roleId));
   };
 
+  const handleImportData = (data: any) => {
+    try {
+      if (data.projects) setProjects(data.projects);
+      if (data.workers) setWorkers(data.workers);
+      if (data.teams) setTeams(data.teams);
+      if (data.tasks) setTasks(data.tasks);
+      if (data.functionalRoles) setFunctionalRoles(data.functionalRoles);
+      alert('Datos importados correctamente. El sistema se ha actualizado.');
+    } catch (error) {
+      console.error(error);
+      alert('Error al importar los datos. Verifique el formato del archivo JSON.');
+    }
+  };
+
   // --- Renders ---
 
   if (!currentUser) {
@@ -327,6 +341,7 @@ export default function App() {
           </div>
 
           <nav className="flex-1 p-4 space-y-2 overflow-hidden overflow-y-auto">
+            {/* 1. Dashboard */}
             <NavButton 
               active={view === 'DASHBOARD'} 
               onClick={() => setView('DASHBOARD')} 
@@ -335,6 +350,9 @@ export default function App() {
               isOpen={isSidebarOpen} 
             />
             
+            <div className="my-2 border-t border-slate-800 pt-2"></div>
+
+            {/* 2. Projects */}
             <NavButton 
               active={view === 'PROJECTS'} 
               onClick={() => setView('PROJECTS')} 
@@ -343,30 +361,7 @@ export default function App() {
               isOpen={isSidebarOpen} 
             />
 
-            <NavButton 
-              active={view === 'TEAMS'} 
-              onClick={() => setView('TEAMS')} 
-              icon={<Users size={20} />} 
-              label="Parejas de Ministración" 
-              isOpen={isSidebarOpen} 
-            />
-
-            <NavButton 
-              active={view === 'TASKS'} 
-              onClick={() => setView('TASKS')} 
-              icon={<ClipboardList size={20} />} 
-              label="Tareas" 
-              isOpen={isSidebarOpen} 
-            />
-            
-            <NavButton 
-              active={view === 'WORKERS'} 
-              onClick={() => setView('WORKERS')} 
-              icon={<UserPlus size={20} />} 
-              label="Miembros" 
-              isOpen={isSidebarOpen} 
-            />
-
+            {/* 3. Roles */}
             <NavButton 
               active={view === 'ROLES'} 
               onClick={() => setView('ROLES')} 
@@ -375,8 +370,36 @@ export default function App() {
               isOpen={isSidebarOpen} 
             />
 
-             <div className="my-2 border-t border-slate-800 pt-2"></div>
+            {/* 4. Members */}
+            <NavButton 
+              active={view === 'WORKERS'} 
+              onClick={() => setView('WORKERS')} 
+              icon={<UserPlus size={20} />} 
+              label="Miembros" 
+              isOpen={isSidebarOpen} 
+            />
 
+            {/* 5. Teams (Parejas) */}
+            <NavButton 
+              active={view === 'TEAMS'} 
+              onClick={() => setView('TEAMS')} 
+              icon={<Users size={20} />} 
+              label="Parejas de Ministración" 
+              isOpen={isSidebarOpen} 
+            />
+
+            {/* 6. Tasks */}
+            <NavButton 
+              active={view === 'TASKS'} 
+              onClick={() => setView('TASKS')} 
+              icon={<ClipboardList size={20} />} 
+              label="Tareas" 
+              isOpen={isSidebarOpen} 
+            />
+            
+            <div className="my-2 border-t border-slate-800 pt-2"></div>
+
+            {/* 7. Settings (Config) */}
              <NavButton 
               active={view === 'SETTINGS'} 
               onClick={() => setView('SETTINGS')} 
@@ -385,6 +408,7 @@ export default function App() {
               isOpen={isSidebarOpen} 
             />
 
+            {/* 8. About */}
              <NavButton 
               active={view === 'ABOUT'} 
               onClick={() => setView('ABOUT')} 
@@ -530,6 +554,7 @@ export default function App() {
         {view === 'SETTINGS' && (
           <SettingsView 
             data={{ projects, teams, workers, tasks, functionalRoles }}
+            onImport={handleImportData}
           />
         )}
 
@@ -567,7 +592,9 @@ const NavButton = ({ active, onClick, icon, label, isOpen }: any) => (
 
 // --- SUB-VIEWS COMPONENTS ---
 
-const SettingsView = ({ data }: { data: any }) => {
+const SettingsView = ({ data, onImport }: { data: any, onImport: (d: any) => void }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleExport = () => {
     const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(
       JSON.stringify(data, null, 2)
@@ -576,6 +603,28 @@ const SettingsView = ({ data }: { data: any }) => {
     link.href = jsonString;
     link.download = `NexusFlow_Backup_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        if (event.target?.result) {
+          const json = JSON.parse(event.target.result as string);
+          onImport(json);
+        }
+      } catch (err) {
+        alert("El archivo no es un JSON válido.");
+      }
+    };
+    reader.readAsText(file);
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
@@ -622,14 +671,30 @@ const SettingsView = ({ data }: { data: any }) => {
             Copia de Seguridad
          </h3>
          <p className="text-slate-600 dark:text-slate-300 text-sm mb-6">
-           Descarga una copia completa de todos los datos actuales del sistema (Proyectos, Miembros, Tareas, etc.) en formato JSON.
+           Gestiona los datos de tu organización. Puedes exportar una copia completa en JSON para resguardo o importar datos desde otro dispositivo.
          </p>
-         <button 
-           onClick={handleExport}
-           className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2 shadow-lg transition transform hover:-translate-y-0.5"
-         >
-            <Download size={18} /> Exportar Datos JSON
-         </button>
+         <div className="flex gap-4">
+           <button 
+             onClick={handleExport}
+             className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2 shadow-lg transition transform hover:-translate-y-0.5"
+           >
+              <Download size={18} /> Exportar Datos JSON
+           </button>
+           
+           <input 
+             type="file" 
+             ref={fileInputRef} 
+             className="hidden" 
+             accept=".json"
+             onChange={handleFileChange}
+           />
+           <button 
+             onClick={() => fileInputRef.current?.click()}
+             className="px-6 py-3 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg font-medium flex items-center gap-2 shadow-sm transition transform hover:-translate-y-0.5"
+           >
+              <Upload size={18} /> Importar Datos
+           </button>
+         </div>
       </Card>
     </div>
   );
