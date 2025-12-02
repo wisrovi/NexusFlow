@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Project, Team, Worker, Task, GraphNode } from '../types';
+import { Filter, X, RefreshCw } from 'lucide-react';
 
 interface OrgChartProps {
   projects: Project[];
@@ -14,6 +15,15 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  
+  // Filter States
+  const [filterProject, setFilterProject] = useState<string>('ALL');
+  const [filterMember, setFilterMember] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+
+  // Computed lists for dropdowns
+  const availableProjects = useMemo(() => projects, [projects]);
+  const availableMembers = useMemo(() => workers.sort((a, b) => a.name.localeCompare(b.name)), [workers]);
 
   // Handle Resize
   useEffect(() => {
@@ -30,25 +40,57 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const resetFilters = () => {
+    setFilterProject('ALL');
+    setFilterMember('ALL');
+    setFilterStatus('ALL');
+  };
+
   useEffect(() => {
     if (!projects.length || !svgRef.current) return;
 
-    // 1. Data Transformation (Strict Hierarchy for Tree View)
+    // 1. Data Transformation with Filtering
     const buildHierarchy = (): GraphNode => {
       const root: GraphNode = { name: "Nexus", type: "ROOT", children: [] };
       
-      projects.forEach(proj => {
+      // Filter Projects
+      const filteredProjects = projects.filter(p => 
+        filterProject === 'ALL' || p.id === filterProject
+      );
+
+      filteredProjects.forEach(proj => {
         const projNode: GraphNode = { name: proj.name, type: "PROJECT", data: proj, children: [] };
+        
+        // Find teams for this project
         const projTeams = teams.filter(t => t.projectId === proj.id);
         
+        // Track if project has relevant children to decide whether to show it (in strict filter mode)
+        let hasRelevantChildren = false;
+
         projTeams.forEach(team => {
           const teamNode: GraphNode = { name: team.name, type: "TEAM", data: team, children: [] };
-          
+          let teamHasRelevantChildren = false;
+
           team.memberIds.forEach(memberId => {
+            // Filter Member
+            if (filterMember !== 'ALL' && memberId !== filterMember) return;
+
             const worker = workers.find(w => w.id === memberId);
             if (worker) {
-              const workerTasks = tasks.filter(t => t.workerId === worker.id && t.projectId === proj.id && t.teamId === team.id);
+              // Filter Tasks
+              let workerTasks = tasks.filter(t => t.workerId === worker.id && t.projectId === proj.id && t.teamId === team.id);
               
+              if (filterStatus !== 'ALL') {
+                workerTasks = workerTasks.filter(t => t.status === filterStatus);
+              }
+
+              // If filtering by status, only show worker if they have matching tasks OR if we aren't filtering by status
+              // However, typically in a graph, if I filter by "Member", I want to see the member even if they have 0 tasks.
+              // If I filter by "Status: Red", I only want to see paths with Red tasks.
+              if (filterStatus !== 'ALL' && workerTasks.length === 0) {
+                 return; 
+              }
+
               const taskNodes: GraphNode[] = workerTasks.map(task => ({
                 name: task.title,
                 type: "TASK",
@@ -56,19 +98,31 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 children: []
               }));
               
-              // We create a new node object for the worker in this specific team context
               teamNode.children?.push({
                 name: worker.name,
                 type: "WORKER",
                 data: worker,
                 children: taskNodes
               });
+              
+              teamHasRelevantChildren = true;
             }
           });
           
-          projNode.children?.push(teamNode);
+          if (teamHasRelevantChildren) {
+             projNode.children?.push(teamNode);
+             hasRelevantChildren = true;
+          }
         });
-        root.children?.push(projNode);
+        
+        // Direct Members logic (if implemented in data) or just ensure project is shown
+        // If we are filtering, only show project if it has matching children
+        // Exception: If only filtering by Project, show the project even if empty
+        if (filterMember === 'ALL' && filterStatus === 'ALL') {
+           root.children?.push(projNode);
+        } else if (hasRelevantChildren) {
+           root.children?.push(projNode);
+        }
       });
       return root;
     };
@@ -81,7 +135,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
     const nodeHeight = 120; // Vertical spacing between siblings
     const levelGap = 280;   // Horizontal spacing between levels
 
-    // Tree Layout: y = x (horizontal), x = y (vertical) for d3.tree
+    // Tree Layout
     const treeLayout = d3.tree<GraphNode>()
       .nodeSize([nodeHeight, levelGap]) 
       .separation((a, b) => (a.parent === b.parent ? 1.1 : 1.3));
@@ -102,39 +156,34 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
 
     svg.call(zoom);
 
-    // Calculate bounding box to center the tree
+    // Initial Center Calculation
     let x0 = Infinity, x1 = -Infinity;
-    let y0 = Infinity, y1 = -Infinity;
     root.each((d: any) => {
       if (d.x < x0) x0 = d.x;
       if (d.x > x1) x1 = d.x;
-      if (d.y < y0) y0 = d.y;
-      if (d.y > y1) y1 = d.y;
     });
 
-    // Initial Center Transform
     const initialScale = 0.75;
-    // Center vertically in viewport
     const initialY = (dimensions.height / 2) - ((x0 + x1) / 2) * initialScale;
-    const initialX = 80; // Padding from left
+    const initialX = 80;
 
     svg.call(zoom.transform, d3.zoomIdentity.translate(initialX, initialY).scale(initialScale));
 
-    // 4. Draw Links (Bezier Curves)
+    // 4. Draw Links
     g.selectAll(".link")
       .data(root.links())
       .enter()
       .append("path")
       .attr("class", "link")
       .attr("fill", "none")
-      .attr("stroke", "#cbd5e1") // Slate-300
+      .attr("stroke", "#cbd5e1")
       .attr("stroke-width", 2)
       .attr("d", d3.linkHorizontal()
         .x((d: any) => d.y)
         .y((d: any) => d.x) as any
       );
 
-    // 5. Draw Nodes (ForeignObject for HTML/Tailwind)
+    // 5. Draw Nodes
     const nodes = g.selectAll(".node")
       .data(root.descendants())
       .enter()
@@ -143,39 +192,28 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
       .attr("transform", (d: any) => `translate(${d.y},${d.x})`)
       .style("cursor", "pointer")
       .on("click", (event, d: any) => {
-         event.stopPropagation(); // Prevent zoom trigger if any
+         event.stopPropagation();
          if (d.data.type !== 'ROOT') {
             onNodeClick(d.data);
          }
       });
 
-    // Add visual hover effect circle behind the card
-    nodes.append("circle")
-      .attr("r", 0)
-      .attr("fill", "rgba(59, 130, 246, 0.1)")
-      .transition()
-      .duration(500)
-      .attr("r", 40);
-
     nodes.append("foreignObject")
       .attr("width", 240)
       .attr("height", 100)
-      .attr("y", -50) // Center vertically relative to node point
+      .attr("y", -50)
       .attr("x", -10)
       .style("overflow", "visible")
-      .style("pointer-events", "none") // Let clicks pass through to the Group
+      .style("pointer-events", "none")
       .html((d: any) => {
         const { type, name } = d.data;
         const data = d.data.data;
 
-        // --- RENDER TEMPLATES ---
-        
         if (type === 'ROOT') {
            return `
              <div class="flex items-center justify-center h-24 w-24 bg-slate-900 text-white rounded-full border-4 border-slate-200 shadow-2xl ml-4 z-10 relative">
                 <div class="text-center">
                    <div class="font-bold text-xs tracking-widest">NEXUS</div>
-                   <div class="text-[10px] text-slate-400">CORE</div>
                 </div>
              </div>
            `;
@@ -203,7 +241,6 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
            const isHigh = data.intensity > 7;
            const isLow = data.intensity < 4;
            const intensityColor = isHigh ? 'text-red-500' : isLow ? 'text-green-500' : 'text-blue-500';
-           // Join roles for display
            const rolesDisplay = data.functionalRoles && data.functionalRoles.length > 0 
              ? data.functionalRoles.join(', ') 
              : 'Sin Rol';
@@ -221,7 +258,6 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 <div class="min-w-0 flex-1">
                    <div class="font-bold text-sm text-slate-900 truncate pr-4" title="${name}">${name}</div>
                    <div class="text-[10px] text-slate-500 uppercase tracking-wide font-bold truncate" title="${rolesDisplay}">${rolesDisplay}</div>
-                   ${data.managerId ? `<div class="text-[9px] text-slate-400 mt-1 truncate">Reporta a: ...${data.managerId.slice(-4)}</div>` : ''}
                 </div>
              </div>
            `;
@@ -259,21 +295,82 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
         return `<div class="p-2 border">${name}</div>`;
       });
 
-  }, [projects, teams, workers, tasks, dimensions, onNodeClick]);
+  }, [projects, teams, workers, tasks, dimensions, onNodeClick, filterProject, filterMember, filterStatus]);
+
+  // --- FILTERS UI ---
+  const FiltersOverlay = () => (
+    <div className="absolute top-4 left-4 z-20 flex flex-col md:flex-row gap-2 md:gap-4 bg-white/95 dark:bg-slate-800/95 backdrop-blur shadow-lg border border-slate-200 dark:border-slate-700 p-3 rounded-lg animate-in fade-in slide-in-from-top-2">
+      <div className="flex items-center gap-2 mb-2 md:mb-0 md:border-r border-slate-200 dark:border-slate-600 pr-4">
+        <Filter size={16} className="text-slate-500" />
+        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Filtros</span>
+      </div>
+
+      <div className="flex gap-2">
+        <select 
+          className="text-xs p-1.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+          value={filterProject}
+          onChange={(e) => setFilterProject(e.target.value)}
+          aria-label="Filtrar por proyecto"
+        >
+          <option value="ALL">Todos los Proyectos</option>
+          {availableProjects.map(p => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+
+        <select 
+          className="text-xs p-1.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+          value={filterMember}
+          onChange={(e) => setFilterMember(e.target.value)}
+          aria-label="Filtrar por miembro"
+        >
+          <option value="ALL">Todos los Miembros</option>
+          {availableMembers.map(w => (
+            <option key={w.id} value={w.id}>{w.name}</option>
+          ))}
+        </select>
+
+        <select 
+          className="text-xs p-1.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          aria-label="Filtrar por estado de tarea"
+        >
+          <option value="ALL">Todos los Estados</option>
+          <option value="RED">⚠️ Bloqueos (ROJO)</option>
+          <option value="YELLOW">⚠️ En Riesgo (AMARILLO)</option>
+          <option value="GREEN">✅ Al día (VERDE)</option>
+        </select>
+
+        {(filterProject !== 'ALL' || filterMember !== 'ALL' || filterStatus !== 'ALL') && (
+          <button 
+            onClick={resetFilters}
+            className="p-1.5 rounded bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 dark:hover:bg-slate-500 text-slate-600 dark:text-slate-200 transition"
+            title="Limpiar filtros"
+          >
+            <RefreshCw size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div ref={wrapperRef} className="w-full h-full bg-slate-50 rounded-xl overflow-hidden relative cursor-grab active:cursor-grabbing group">
+    <div ref={wrapperRef} className="w-full h-full bg-slate-50 dark:bg-slate-900 rounded-xl overflow-hidden relative cursor-grab active:cursor-grabbing group">
+      
+      <FiltersOverlay />
+
       {/* Controls Overlay */}
-      <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm border border-slate-200 z-10 flex flex-col items-end gap-1 pointer-events-none">
+      <div className="absolute top-4 right-4 bg-white/90 dark:bg-slate-800/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 z-10 flex flex-col items-end gap-1 pointer-events-none hidden md:flex">
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Controles</span>
-        <span className="text-xs text-slate-600 font-medium">Click en Nodos para Detalles</span>
-        <span className="text-xs text-slate-600 font-medium">Scroll para Zoom</span>
-        <span className="text-xs text-slate-600 font-medium">Arrastrar para Mover</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">Click en Nodos para Detalles</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">Scroll para Zoom</span>
+        <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">Arrastrar para Mover</span>
       </div>
 
       {/* Grid Pattern Background */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.03]" 
-        style={{ backgroundImage: 'radial-gradient(#0f172a 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.05]" 
+        style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
       </div>
       
       <svg ref={svgRef} className="w-full h-full block touch-none"></svg>
