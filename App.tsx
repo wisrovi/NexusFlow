@@ -9,7 +9,8 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
+  LayoutList, LayoutGrid
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -1522,6 +1523,7 @@ interface TasksViewProps {
 }
 
 const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, workers, addTask, editTask, deleteTask }) => {
+  const [viewMode, setViewMode] = useState<'LIST' | 'BOARD'>('LIST');
   const [groupBy, setGroupBy] = useState<'NONE' | 'PROJECT' | 'STATUS' | 'WORKER'>('NONE');
   const [filterText, setFilterText] = useState('');
   
@@ -1598,6 +1600,27 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     editTask({ ...task, ...updates });
   };
 
+  // --- DRAG AND DROP HANDLERS ---
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.setData("taskId", taskId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Necessary to allow dropping
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, newStatus: TaskStatus) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("taskId");
+    const task = tasks.find(t => t.id === taskId);
+    
+    if (task && task.status !== newStatus && isAdmin) {
+      handleQuickStatusChange(task, newStatus);
+    }
+  };
+
   // Derived options for select dropdowns (Cascading)
   const availableTeams = teams.filter(t => t.projectId === formProjectId);
   const availableWorkers = useMemo(() => {
@@ -1608,7 +1631,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   }, [formTeamId, teams, workers]);
 
 
-  // Grouping Logic
+  // Grouping Logic for LIST VIEW
   const filteredTasks = tasks.filter(t => t.title.toLowerCase().includes(filterText.toLowerCase()));
   
   const groupedTasks: Record<string, Task[]> = useMemo(() => {
@@ -1637,8 +1660,8 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     <div className="space-y-6">
       
       {/* Toolbar */}
-      <Card className="p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="flex items-center gap-4 w-full md:w-auto">
+      <Card className="p-4 flex flex-col xl:flex-row gap-4 justify-between items-center">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
           <div className="relative w-full md:w-64">
              <Filter className="absolute left-3 top-2.5 text-slate-400" size={18} />
              <input 
@@ -1650,19 +1673,40 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
           </div>
           
           <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-             <Layers size={18} />
-             <span className="hidden md:inline">Agrupar por:</span>
-             <select 
-               className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none font-medium dark:bg-slate-700 dark:border-slate-600"
-               value={groupBy}
-               onChange={(e) => setGroupBy(e.target.value as any)}
-             >
-               <option value="NONE">Sin Agrupar</option>
-               <option value="PROJECT">Proyecto</option>
-               <option value="STATUS">Estado</option>
-               <option value="WORKER">Miembro</option>
-             </select>
+             <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1 border border-slate-200 dark:border-slate-600">
+                <button 
+                  onClick={() => setViewMode('LIST')} 
+                  className={`p-1.5 rounded-md transition ${viewMode === 'LIST' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}
+                  title="Vista de Lista"
+                >
+                  <LayoutList size={18} />
+                </button>
+                <button 
+                  onClick={() => setViewMode('BOARD')} 
+                  className={`p-1.5 rounded-md transition ${viewMode === 'BOARD' ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}
+                  title="Tablero Kanban"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+             </div>
           </div>
+
+          {viewMode === 'LIST' && (
+            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+              <Layers size={18} />
+              <span className="hidden md:inline">Agrupar por:</span>
+              <select 
+                className="bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none font-medium dark:bg-slate-700 dark:border-slate-600"
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as any)}
+              >
+                <option value="NONE">Sin Agrupar</option>
+                <option value="PROJECT">Proyecto</option>
+                <option value="STATUS">Estado</option>
+                <option value="WORKER">Miembro</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {isAdmin && (
@@ -1675,128 +1719,196 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
         )}
       </Card>
 
-      {/* Task List */}
-      <div className="space-y-8">
-        {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
-          <div key={groupName} className="space-y-3 animate-in fade-in duration-500">
-            {groupBy !== 'NONE' && (
-              <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
-                <span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span>
-                {groupName} <span className="text-slate-400 text-sm font-normal">({groupTasks.length})</span>
-              </h3>
-            )}
-            
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold">
-                  <tr>
-                    <th className="px-6 py-3">Estado</th>
-                    <th className="px-6 py-3">Tarea</th>
-                    <th className="px-6 py-3 hidden lg:table-cell">Fechas</th>
-                    <th className="px-6 py-3 hidden md:table-cell">Proyecto / Equipo</th>
-                    <th className="px-6 py-3 hidden md:table-cell">Responsable</th>
-                    {isAdmin && <th className="px-6 py-3 text-right">Acciones</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                  {groupTasks.map(task => {
-                    const project = projects.find(p => p.id === task.projectId);
-                    const team = teams.find(t => t.id === task.teamId);
-                    const worker = workers.find(w => w.id === task.workerId);
+      {/* VIEW CONTENT */}
+      {viewMode === 'LIST' ? (
+        <div className="space-y-8">
+          {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
+            <div key={groupName} className="space-y-3 animate-in fade-in duration-500">
+              {groupBy !== 'NONE' && (
+                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
+                  <span className="w-2 h-6 bg-blue-500 rounded-full inline-block"></span>
+                  {groupName} <span className="text-slate-400 text-sm font-normal">({groupTasks.length})</span>
+                </h3>
+              )}
+              
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold">
+                    <tr>
+                      <th className="px-6 py-3">Estado</th>
+                      <th className="px-6 py-3">Tarea</th>
+                      <th className="px-6 py-3 hidden lg:table-cell">Fechas</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Proyecto / Equipo</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Responsable</th>
+                      {isAdmin && <th className="px-6 py-3 text-right">Acciones</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                    {groupTasks.map(task => {
+                      const project = projects.find(p => p.id === task.projectId);
+                      const team = teams.find(t => t.id === task.teamId);
+                      const worker = workers.find(w => w.id === task.workerId);
 
-                    return (
-                      <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
-                        <td className="px-6 py-4 w-32">
-                          {isAdmin ? (
-                             <div className="relative">
-                                <select 
-                                  value={task.status}
-                                  onChange={(e) => handleQuickStatusChange(task, e.target.value as TaskStatus)}
-                                  className={`appearance-none cursor-pointer pl-3 pr-8 py-1 rounded-full text-xs font-bold border outline-none focus:ring-2 focus:ring-offset-1 transition-all ${
-                                    task.status === 'GREEN' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 focus:ring-green-500' :
-                                    task.status === 'YELLOW' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800 focus:ring-yellow-500' :
-                                    'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800 focus:ring-red-500'
-                                  }`}
-                                >
-                                  <option value="GREEN">GREEN</option>
-                                  <option value="YELLOW">YELLOW</option>
-                                  <option value="RED">RED</option>
-                                </select>
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                                   <ChevronDown size={12} className={
-                                      task.status === 'GREEN' ? 'text-green-700 dark:text-green-400' :
-                                      task.status === 'YELLOW' ? 'text-yellow-700 dark:text-yellow-400' : 'text-red-700 dark:text-red-400'
-                                   } />
-                                </div>
+                      return (
+                        <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
+                          <td className="px-6 py-4 w-32">
+                            {isAdmin ? (
+                               <div className="relative">
+                                  <select 
+                                    value={task.status}
+                                    onChange={(e) => handleQuickStatusChange(task, e.target.value as TaskStatus)}
+                                    className={`appearance-none cursor-pointer pl-3 pr-8 py-1 rounded-full text-xs font-bold border outline-none focus:ring-2 focus:ring-offset-1 transition-all ${
+                                      task.status === 'GREEN' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 focus:ring-green-500' :
+                                      task.status === 'YELLOW' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800 focus:ring-yellow-500' :
+                                      'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800 focus:ring-red-500'
+                                    }`}
+                                  >
+                                    <option value="GREEN">GREEN</option>
+                                    <option value="YELLOW">YELLOW</option>
+                                    <option value="RED">RED</option>
+                                  </select>
+                                  <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                     <ChevronDown size={12} className={
+                                        task.status === 'GREEN' ? 'text-green-700 dark:text-green-400' :
+                                        task.status === 'YELLOW' ? 'text-yellow-700 dark:text-yellow-400' : 'text-red-700 dark:text-red-400'
+                                     } />
+                                  </div>
+                               </div>
+                            ) : (
+                              <Badge status={task.status} />
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-slate-800 dark:text-slate-200">{task.title}</div>
+                            {task.status === 'RED' && (
+                              <div className="text-xs text-red-500 mt-1 flex items-center gap-1 font-medium">
+                                <AlertTriangle size={12} /> {task.blockReason}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 hidden lg:table-cell text-xs text-slate-500 dark:text-slate-400">
+                             <div title="Creada" className="flex items-center gap-1 mb-1">
+                               <Calendar size={12} className="text-slate-400" /> 
+                               {new Date(task.createdAt).toLocaleDateString()}
                              </div>
-                          ) : (
-                            <Badge status={task.status} />
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-slate-800 dark:text-slate-200">{task.title}</div>
-                          {task.status === 'RED' && (
-                            <div className="text-xs text-red-500 mt-1 flex items-center gap-1 font-medium">
-                              <AlertTriangle size={12} /> {task.blockReason}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 hidden lg:table-cell text-xs text-slate-500 dark:text-slate-400">
-                           <div title="Creada" className="flex items-center gap-1 mb-1">
-                             <Calendar size={12} className="text-slate-400" /> 
-                             {new Date(task.createdAt).toLocaleDateString()}
-                           </div>
-                           {task.dueDate && (
-                             <div title="Vencimiento" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
-                               <Clock size={12} />
-                               {new Date(task.dueDate).toLocaleDateString()}
-                             </div>
-                           )}
-                        </td>
-                        <td className="px-6 py-4 hidden md:table-cell">
-                          <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{project?.name}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{team?.name}</div>
-                        </td>
-                        <td className="px-6 py-4 hidden md:table-cell">
-                           <div className="flex items-center gap-2">
-                             <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-200">
-                               {worker?.name.charAt(0)}
-                             </div>
-                             <div className="text-sm text-slate-600 dark:text-slate-300">{worker?.name}</div>
-                           </div>
-                        </td>
-                        {isAdmin && (
-                          <td className="px-6 py-4 text-right">
-                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                               <button 
-                                 onClick={() => openEditModal(task)}
-                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-600 rounded transition"
-                               >
-                                 <Pencil size={16} />
-                               </button>
-                               <button 
-                                 onClick={() => deleteTask(task.id)}
-                                 className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
-                               >
-                                 <Trash2 size={16} />
-                               </button>
+                             {task.dueDate && (
+                               <div title="Vencimiento" className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                 <Clock size={12} />
+                                 {new Date(task.dueDate).toLocaleDateString()}
+                               </div>
+                             )}
+                          </td>
+                          <td className="px-6 py-4 hidden md:table-cell">
+                            <div className="text-sm text-slate-900 dark:text-slate-100 font-medium">{project?.name}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{team?.name}</div>
+                          </td>
+                          <td className="px-6 py-4 hidden md:table-cell">
+                             <div className="flex items-center gap-2">
+                               <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-200">
+                                 {worker?.name.charAt(0)}
+                               </div>
+                               <div className="text-sm text-slate-600 dark:text-slate-300">{worker?.name}</div>
                              </div>
                           </td>
-                        )}
+                          {isAdmin && (
+                            <td className="px-6 py-4 text-right">
+                               <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                 <button 
+                                   onClick={() => openEditModal(task)}
+                                   className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-600 rounded transition"
+                                 >
+                                   <Pencil size={16} />
+                                 </button>
+                                 <button 
+                                   onClick={() => deleteTask(task.id)}
+                                   className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
+                                 >
+                                   <Trash2 size={16} />
+                                 </button>
+                               </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                    {groupTasks.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
                       </tr>
-                    );
-                  })}
-                  {groupTasks.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        /* KANBAN BOARD */
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-h-[500px]">
+           {/* GREEN COLUMN */}
+           <div 
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'GREEN')}
+              className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
+           >
+              <div className="flex justify-between items-center border-b border-green-200 dark:border-green-900 pb-3">
+                 <h3 className="font-bold text-green-700 dark:text-green-400 flex items-center gap-2">
+                    <CheckCircle size={18} /> GREEN
+                 </h3>
+                 <span className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-0.5 rounded text-xs font-bold">
+                    {filteredTasks.filter(t => t.status === 'GREEN').length}
+                 </span>
+              </div>
+              <div className="flex-1 space-y-3">
+                 {filteredTasks.filter(t => t.status === 'GREEN').map(task => (
+                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
+                 ))}
+              </div>
+           </div>
+
+           {/* YELLOW COLUMN */}
+           <div 
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'YELLOW')}
+              className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
+           >
+              <div className="flex justify-between items-center border-b border-yellow-200 dark:border-yellow-900 pb-3">
+                 <h3 className="font-bold text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
+                    <AlertTriangle size={18} /> YELLOW
+                 </h3>
+                 <span className="bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded text-xs font-bold">
+                    {filteredTasks.filter(t => t.status === 'YELLOW').length}
+                 </span>
+              </div>
+              <div className="flex-1 space-y-3">
+                 {filteredTasks.filter(t => t.status === 'YELLOW').map(task => (
+                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
+                 ))}
+              </div>
+           </div>
+
+           {/* RED COLUMN */}
+           <div 
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'RED')}
+              className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
+           >
+              <div className="flex justify-between items-center border-b border-red-200 dark:border-red-900 pb-3">
+                 <h3 className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                    <AlertTriangle size={18} /> RED
+                 </h3>
+                 <span className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-2 py-0.5 rounded text-xs font-bold">
+                    {filteredTasks.filter(t => t.status === 'RED').length}
+                 </span>
+              </div>
+              <div className="flex-1 space-y-3">
+                 {filteredTasks.filter(t => t.status === 'RED').map(task => (
+                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
+                 ))}
+              </div>
+           </div>
+        </div>
+      )}
 
       {/* CREATE / EDIT MODAL */}
       {isModalOpen && (
@@ -1935,4 +2047,58 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
 
     </div>
   );
+};
+
+const KanbanCard = ({ task, projects, workers, isAdmin, onEdit, onDragStart }: { task: Task, projects: Project[], workers: Worker[], isAdmin: boolean, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void }) => {
+   const project = projects.find(p => p.id === task.projectId);
+   const worker = workers.find(w => w.id === task.workerId);
+   
+   return (
+      <div 
+        draggable={isAdmin}
+        onDragStart={(e) => onDragStart(e, task.id)}
+        className={`
+           bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 
+           hover:shadow-md transition cursor-grab active:cursor-grabbing group
+        `}
+      >
+         <div className="flex justify-between items-start mb-2">
+            <span 
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide truncate max-w-[120px]"
+              style={{ backgroundColor: `${project?.color}20`, color: project?.color }}
+            >
+               {project?.name}
+            </span>
+            {isAdmin && (
+               <button onClick={onEdit} className="text-slate-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition">
+                  <Pencil size={14} />
+               </button>
+            )}
+         </div>
+         
+         <p className="font-medium text-slate-800 dark:text-slate-200 text-sm mb-3 line-clamp-2">{task.title}</p>
+         
+         {task.status === 'RED' && (
+            <div className="text-xs text-red-500 mb-3 bg-red-50 dark:bg-red-900/10 p-1.5 rounded border border-red-100 dark:border-red-900/30 flex items-start gap-1">
+               <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+               <span className="leading-tight">{task.blockReason || 'Bloqueado'}</span>
+            </div>
+         )}
+         
+         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-2">
+            <div className="flex items-center gap-1.5">
+               <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-200">
+                  {worker?.name.charAt(0)}
+               </div>
+               <span className="truncate max-w-[100px]">{worker?.name}</span>
+            </div>
+            {task.dueDate && (
+               <div className={`flex items-center gap-1 ${new Date(task.dueDate) < new Date() ? 'text-red-500 font-bold' : ''}`}>
+                  <Clock size={12} />
+                  {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' })}
+               </div>
+            )}
+         </div>
+      </div>
+   );
 };
