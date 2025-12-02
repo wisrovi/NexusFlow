@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Project, Team, Worker, Task, GraphNode } from '../types';
-import { Filter, X, RefreshCw } from 'lucide-react';
+import { Filter, RefreshCw } from 'lucide-react';
 
 interface OrgChartProps {
   projects: Project[];
@@ -85,8 +85,6 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
               }
 
               // If filtering by status, only show worker if they have matching tasks OR if we aren't filtering by status
-              // However, typically in a graph, if I filter by "Member", I want to see the member even if they have 0 tasks.
-              // If I filter by "Status: Red", I only want to see paths with Red tasks.
               if (filterStatus !== 'ALL' && workerTasks.length === 0) {
                  return; 
               }
@@ -114,10 +112,50 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
              hasRelevantChildren = true;
           }
         });
+
+        // DIRECT MEMBERS (Not in a Team)
+        if (proj.memberIds && proj.memberIds.length > 0) {
+          proj.memberIds.forEach(memberId => {
+             // Filter Member
+             if (filterMember !== 'ALL' && memberId !== filterMember) return;
+             
+             // Check if already added via team (to avoid duplicates if data is messy, though logic separates them)
+             // Here we assume memberIds in project are "direct assignments" or duplicates. 
+             // Typically we visualize hierarchical paths. If a member is in a team, they are shown under the team.
+             // If a member is directly in the project but NOT in a team (or we want to show them again), we add them here.
+             // For simplicity, let's treat these as "Direct Reports" node or just direct children if not in team.
+             // Checking if member is already in a team under this project:
+             const inTeam = projTeams.some(t => t.memberIds.includes(memberId));
+             
+             if (!inTeam) {
+                const worker = workers.find(w => w.id === memberId);
+                if (worker) {
+                    // Logic for direct tasks filtering...
+                    let workerTasks = tasks.filter(t => t.workerId === worker.id && t.projectId === proj.id && !t.teamId);
+                    if (filterStatus !== 'ALL') {
+                       workerTasks = workerTasks.filter(t => t.status === filterStatus);
+                    }
+                    if (filterStatus !== 'ALL' && workerTasks.length === 0) return;
+
+                    const taskNodes: GraphNode[] = workerTasks.map(task => ({
+                      name: task.title,
+                      type: "TASK",
+                      data: task,
+                      children: []
+                    }));
+
+                    projNode.children?.push({
+                      name: worker.name,
+                      type: "WORKER",
+                      data: worker,
+                      children: taskNodes
+                    });
+                    hasRelevantChildren = true;
+                }
+             }
+          });
+        }
         
-        // Direct Members logic (if implemented in data) or just ensure project is shown
-        // If we are filtering, only show project if it has matching children
-        // Exception: If only filtering by Project, show the project even if empty
         if (filterMember === 'ALL' && filterStatus === 'ALL') {
            root.children?.push(projNode);
         } else if (hasRelevantChildren) {
@@ -241,23 +279,29 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
            const isHigh = data.intensity > 7;
            const isLow = data.intensity < 4;
            const intensityColor = isHigh ? 'text-red-500' : isLow ? 'text-green-500' : 'text-blue-500';
-           const rolesDisplay = data.functionalRoles && data.functionalRoles.length > 0 
-             ? data.functionalRoles.join(', ') 
-             : 'Sin Rol';
+           
+           // Format roles as individual badges
+           const rolesHtml = data.functionalRoles && data.functionalRoles.length > 0 
+             ? data.functionalRoles.map((r: string) => 
+                 `<span class="inline-block px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 text-slate-600 border border-slate-200 mr-1 mb-1 leading-none whitespace-nowrap">${r}</span>`
+               ).join('') 
+             : '<span class="text-[9px] text-slate-400 italic">Sin roles</span>';
 
            return `
-             <div class="w-[240px] bg-white rounded-xl shadow-md border border-slate-200 p-3 flex items-center gap-3 relative overflow-hidden h-full group hover:shadow-xl transition-all">
-                <div class="absolute top-2 right-2 flex flex-col items-end">
-                   <div class="text-[10px] font-bold ${intensityColor} bg-slate-50 px-1 rounded">Int: ${data.intensity}</div>
+             <div class="w-[240px] bg-white rounded-xl shadow-md border border-slate-200 p-2.5 flex items-start gap-2 relative overflow-hidden h-full group hover:shadow-xl transition-all">
+                <div class="absolute top-2 right-2">
+                   <div class="text-[9px] font-bold ${intensityColor} bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">Int: ${data.intensity}</div>
                 </div>
                 
-                <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold border border-slate-200 shrink-0 shadow-inner">
+                <div class="mt-1 w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold border border-slate-200 shrink-0 shadow-inner text-sm">
                   ${name.charAt(0)}
                 </div>
                 
-                <div class="min-w-0 flex-1">
-                   <div class="font-bold text-sm text-slate-900 truncate pr-4" title="${name}">${name}</div>
-                   <div class="text-[10px] text-slate-500 uppercase tracking-wide font-bold truncate" title="${rolesDisplay}">${rolesDisplay}</div>
+                <div class="min-w-0 flex-1 pt-0.5">
+                   <div class="font-bold text-sm text-slate-900 truncate pr-12 mb-1.5" title="${name}">${name}</div>
+                   <div class="flex flex-wrap content-start max-h-[42px] overflow-hidden">
+                      ${rolesHtml}
+                   </div>
                 </div>
              </div>
            `;
