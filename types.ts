@@ -26,6 +26,7 @@ export interface Project {
   name: string;
   color: string; // Hex code
   description?: string;
+  memberIds?: string[]; // IDs of workers assigned directly to the project
 }
 
 export interface Team {

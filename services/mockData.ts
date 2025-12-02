@@ -1,12 +1,12 @@
 import { Project, Team, Worker, Task, FunctionalRole } from '../types';
 
 export const INITIAL_PROJECTS: Project[] = [
-  { id: 'p1', name: 'Llamamientos', color: '#3b82f6', description: 'Gestión de llamamientos y relevos' },
-  { id: 'p2', name: 'Ministración', color: '#10b981', description: 'Supervisión de parejas de ministración' },
-  { id: 'p3', name: 'Autosuficiencia', color: '#f59e0b', description: 'Cursos y mentoria de autosuficiencia' },
-  { id: 'p4', name: 'Empleo', color: '#6366f1', description: 'Búsqueda y recursos de empleo' },
-  { id: 'p5', name: 'Recomendación Templo', color: '#8b5cf6', description: 'Seguimiento de entrevistas y vigencia' },
-  { id: 'p6', name: 'Bendición Patriarcal', color: '#ec4899', description: 'Solicitudes y recepciones' },
+  { id: 'p1', name: 'Llamamientos', color: '#3b82f6', description: 'Gestión de llamamientos y relevos', memberIds: [] },
+  { id: 'p2', name: 'Ministración', color: '#10b981', description: 'Supervisión de parejas de ministración', memberIds: [] },
+  { id: 'p3', name: 'Autosuficiencia', color: '#f59e0b', description: 'Cursos y mentoria de autosuficiencia', memberIds: [] },
+  { id: 'p4', name: 'Empleo', color: '#6366f1', description: 'Búsqueda y recursos de empleo', memberIds: [] },
+  { id: 'p5', name: 'Recomendación Templo', color: '#8b5cf6', description: 'Seguimiento de entrevistas y vigencia', memberIds: [] },
+  { id: 'p6', name: 'Bendición Patriarcal', color: '#ec4899', description: 'Solicitudes y recepciones', memberIds: [] },
 ];
 
 export const INITIAL_FUNCTIONAL_ROLES: FunctionalRole[] = [

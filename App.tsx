@@ -9,7 +9,7 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -41,6 +41,7 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
       const proj = detailData as Project;
       const projTeams = data.teams.filter(t => t.projectId === proj.id);
       const projTasks = data.tasks.filter(t => t.projectId === proj.id);
+      const directMembers = proj.memberIds?.length || 0;
       return (
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
@@ -49,14 +50,18 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
           </div>
           <p className="text-slate-600 dark:text-slate-300">{proj.description}</p>
           
-          <div className="grid grid-cols-2 gap-4 mt-4">
-             <div className="bg-slate-50 dark:bg-slate-700 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold">{projTeams.length}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase">Parejas</div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+             <div className="bg-slate-50 dark:bg-slate-700 p-2 rounded-lg text-center">
+                <div className="text-xl font-bold">{directMembers}</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase leading-tight">Miembros Asignados</div>
              </div>
-             <div className="bg-slate-50 dark:bg-slate-700 p-3 rounded-lg text-center">
-                <div className="text-2xl font-bold">{projTasks.length}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 uppercase">Tareas Totales</div>
+             <div className="bg-slate-50 dark:bg-slate-700 p-2 rounded-lg text-center">
+                <div className="text-xl font-bold">{projTeams.length}</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase leading-tight">Parejas</div>
+             </div>
+             <div className="bg-slate-50 dark:bg-slate-700 p-2 rounded-lg text-center">
+                <div className="text-xl font-bold">{projTasks.length}</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase leading-tight">Tareas Totales</div>
              </div>
           </div>
         </div>
@@ -533,6 +538,7 @@ export default function App() {
           <ProjectsView 
             isAdmin={isAdmin} 
             projects={projects}
+            workers={workers}
             editProject={editProject}
             addProject={addProject}
           />
@@ -1081,13 +1087,17 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
 };
 
 const ProjectsView = ({ 
-  isAdmin, projects, editProject, addProject 
+  isAdmin, projects, workers, editProject, addProject 
 }: any) => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [tempProjectName, setTempProjectName] = useState('');
   const [tempProjectColor, setTempProjectColor] = useState('#3b82f6');
   const [tempProjectDesc, setTempProjectDesc] = useState('');
+
+  // Manage Members State
+  const [managingMembersProject, setManagingMembersProject] = useState<Project | null>(null);
+  const [tempMembers, setTempMembers] = useState<string[]>([]);
 
   // Handlers
   const handleCreateProject = () => {
@@ -1096,7 +1106,8 @@ const ProjectsView = ({
       id: `proj${Date.now()}`,
       name: tempProjectName,
       color: tempProjectColor,
-      description: tempProjectDesc || 'Sin descripción'
+      description: tempProjectDesc || 'Sin descripción',
+      memberIds: []
     });
     setIsCreateProjectModalOpen(false);
     setTempProjectName('');
@@ -1122,6 +1133,24 @@ const ProjectsView = ({
     }
   };
 
+  const openManageMembers = (project: Project) => {
+    setManagingMembersProject(project);
+    setTempMembers(project.memberIds || []);
+  };
+
+  const toggleMember = (workerId: string) => {
+    setTempMembers(prev => 
+      prev.includes(workerId) ? prev.filter(id => id !== workerId) : [...prev, workerId]
+    );
+  };
+
+  const saveMembers = () => {
+    if (managingMembersProject) {
+        editProject({ ...managingMembersProject, memberIds: tempMembers });
+        setManagingMembersProject(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
@@ -1143,15 +1172,27 @@ const ProjectsView = ({
                 <div className="flex justify-between items-start mb-4">
                   <h3 className="text-xl font-bold text-slate-800 dark:text-white">{project.name}</h3>
                   {isAdmin && (
-                    <button onClick={() => openProjectEdit(project)} className="text-slate-400 hover:text-blue-500">
-                      <Pencil size={18} />
-                    </button>
+                    <div className="flex gap-2">
+                        <button onClick={() => openManageMembers(project)} className="text-slate-400 hover:text-green-500 p-1 hover:bg-green-50 dark:hover:bg-green-900/20 rounded" title="Gestionar Miembros">
+                          <Users size={18} />
+                        </button>
+                        <button onClick={() => openProjectEdit(project)} className="text-slate-400 hover:text-blue-500 p-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded" title="Editar Proyecto">
+                          <Pencil size={18} />
+                        </button>
+                    </div>
                   )}
                 </div>
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 min-h-[40px]">{project.description}</p>
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }}></div>
-                   <span>ID: {project.id}</span>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                   <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }}></div>
+                      <span>ID: {project.id}</span>
+                   </div>
+                   {project.memberIds && project.memberIds.length > 0 && (
+                      <span className="font-bold text-slate-500 dark:text-slate-300 flex items-center gap-1">
+                          <UserIcon size={12} /> {project.memberIds.length} Miembros
+                      </span>
+                   )}
                 </div>
              </div>
           </Card>
@@ -1237,6 +1278,47 @@ const ProjectsView = ({
                   Guardar Cambios
                 </button>
               </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* MANAGE MEMBERS MODAL */}
+      {managingMembersProject && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-md p-6 animate-in zoom-in duration-200 max-h-[80vh] flex flex-col">
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Asignar Miembros</h3>
+            <p className="text-sm text-blue-600 dark:text-blue-400 font-medium mb-4">{managingMembersProject.name}</p>
+            <p className="text-xs text-slate-500 mb-4">Selecciona los miembros que pertenecen directamente a este proyecto.</p>
+            
+            <div className="flex-1 overflow-y-auto border dark:border-slate-700 rounded-lg p-2 space-y-1 mb-4">
+              <div className="grid gap-1">
+                 {workers.map(worker => (
+                    <label key={worker.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded cursor-pointer transition border border-transparent hover:border-slate-100 dark:hover:border-slate-600">
+                      <input 
+                        type="checkbox" 
+                        checked={tempMembers.includes(worker.id)}
+                        onChange={() => toggleMember(worker.id)}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-200">
+                           {worker.name.charAt(0)}
+                        </div>
+                        <div>
+                           <div className="text-sm font-medium text-slate-800 dark:text-slate-200">{worker.name}</div>
+                           <div className="text-[10px] text-slate-400">{worker.functionalRoles.slice(0, 1).join(', ')}</div>
+                        </div>
+                      </div>
+                    </label>
+                 ))}
+                 {workers.length === 0 && <p className="text-sm text-center p-4 text-slate-400">No hay miembros registrados.</p>}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 dark:border-slate-700 pt-4">
+              <button onClick={() => setManagingMembersProject(null)} className="px-3 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
+              <button onClick={saveMembers} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow-sm">Guardar Asignación</button>
             </div>
           </Card>
         </div>
@@ -1505,6 +1587,17 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setIsModalOpen(false);
   };
 
+  const handleQuickStatusChange = (task: Task, newStatus: TaskStatus) => {
+    let updates: Partial<Task> = { status: newStatus };
+    // Handle Block Reason automatically for quick switches
+    if (newStatus !== 'RED') {
+        updates.blockReason = undefined;
+    } else if (!task.blockReason) {
+         updates.blockReason = "Bloqueo registrado manualmente";
+    }
+    editTask({ ...task, ...updates });
+  };
+
   // Derived options for select dropdowns (Cascading)
   const availableTeams = teams.filter(t => t.projectId === formProjectId);
   const availableWorkers = useMemo(() => {
@@ -1613,8 +1706,32 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
 
                     return (
                       <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
-                        <td className="px-6 py-4 w-24">
-                          <Badge status={task.status} />
+                        <td className="px-6 py-4 w-32">
+                          {isAdmin ? (
+                             <div className="relative">
+                                <select 
+                                  value={task.status}
+                                  onChange={(e) => handleQuickStatusChange(task, e.target.value as TaskStatus)}
+                                  className={`appearance-none cursor-pointer pl-3 pr-8 py-1 rounded-full text-xs font-bold border outline-none focus:ring-2 focus:ring-offset-1 transition-all ${
+                                    task.status === 'GREEN' ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 focus:ring-green-500' :
+                                    task.status === 'YELLOW' ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800 focus:ring-yellow-500' :
+                                    'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800 focus:ring-red-500'
+                                  }`}
+                                >
+                                  <option value="GREEN">GREEN</option>
+                                  <option value="YELLOW">YELLOW</option>
+                                  <option value="RED">RED</option>
+                                </select>
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                   <ChevronDown size={12} className={
+                                      task.status === 'GREEN' ? 'text-green-700 dark:text-green-400' :
+                                      task.status === 'YELLOW' ? 'text-yellow-700 dark:text-yellow-400' : 'text-red-700 dark:text-red-400'
+                                   } />
+                                </div>
+                             </div>
+                          ) : (
+                            <Badge status={task.status} />
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-800 dark:text-slate-200">{task.title}</div>
@@ -1743,13 +1860,21 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                   <div>
                      <label className="block text-sm font-medium mb-1">Responsable</label>
                      <select 
-                        className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600"
+                        className="w-full p-2 border border-slate-300 rounded bg-white dark:bg-slate-700 dark:border-slate-600 disabled:opacity-50 disabled:bg-slate-100 dark:disabled:bg-slate-800"
                         value={formWorkerId}
                         onChange={e => setFormWorkerId(e.target.value)}
                         disabled={!formTeamId}
                       >
-                        <option value="">-- Seleccionar --</option>
-                        {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRoles.join(', ')})</option>)}
+                        <option value="">-- Seleccionar Responsable --</option>
+                        {availableWorkers.length > 0 ? (
+                           availableWorkers.map(w => (
+                             <option key={w.id} value={w.id}>
+                               {w.name} {w.functionalRoles?.length ? `(${w.functionalRoles.join(', ')})` : ''}
+                             </option>
+                           ))
+                        ) : (
+                           formTeamId && <option value="" disabled>No hay miembros en este equipo</option>
+                        )}
                       </select>
                   </div>
                   <div>
