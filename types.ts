@@ -46,6 +46,7 @@ export interface Task {
   projectId: string;
   createdAt: string; // ISO Date String
   dueDate?: string; // ISO Date String
+  notes?: string; // Additional details
   // If RED:
   blockReason?: string;
   blockedByWorkerId?: string; // The sub-worker causing the block

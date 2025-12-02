@@ -9,7 +9,7 @@ import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -155,6 +155,15 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
                 <span className="font-medium">{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'N/A'}</span>
               </div>
            </div>
+
+           {task.notes && (
+             <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded">
+                <strong className="block text-xs uppercase text-slate-500 mb-1 flex items-center gap-1">
+                  <StickyNote size={12} /> Notas:
+                </strong>
+                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{task.notes}</p>
+             </div>
+           )}
         </div>
       );
     }
@@ -1445,6 +1454,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   const [formTitle, setFormTitle] = useState('');
   const [formStatus, setFormStatus] = useState<TaskStatus>('GREEN');
   const [formDueDate, setFormDueDate] = useState('');
+  const [formNotes, setFormNotes] = useState('');
 
   // Handle Opening Modal (Create vs Edit)
   const openCreateModal = () => {
@@ -1455,6 +1465,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormTitle('');
     setFormStatus('GREEN');
     setFormDueDate('');
+    setFormNotes('');
     setIsModalOpen(true);
   };
 
@@ -1467,6 +1478,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormStatus(task.status);
     // Format date for input type="date"
     setFormDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
+    setFormNotes(task.notes || '');
     setIsModalOpen(true);
   };
 
@@ -1481,7 +1493,8 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
       projectId: formProjectId,
       status: formStatus,
       createdAt: editingTask ? editingTask.createdAt : new Date().toISOString(),
-      dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined
+      dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined,
+      notes: formNotes
     };
 
     if (editingTask) {
@@ -1748,6 +1761,16 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                         onChange={e => setFormDueDate(e.target.value)}
                       />
                   </div>
+                </div>
+                
+                <div className="md:col-span-2">
+                   <label className="block text-sm font-medium mb-1">Notas Adicionales (Opcional)</label>
+                   <textarea 
+                      className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600 h-20 resize-none"
+                      placeholder="Detalles extra sobre la tarea..."
+                      value={formNotes}
+                      onChange={e => setFormNotes(e.target.value)}
+                   />
                 </div>
 
                 {editingTask && (
