@@ -75,7 +75,7 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
                  <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-600 flex items-center justify-center font-bold text-xs">{m!.name.charAt(0)}</div>
                  <div>
                     <div className="font-medium text-sm">{m!.name}</div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400">{m!.functionalRole}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">{m!.functionalRoles.join(', ')}</div>
                  </div>
               </div>
             ))}
@@ -92,6 +92,18 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
            <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
               <span className="text-sm font-medium">Nivel de Intensidad</span>
               <span className={`font-bold ${worker.intensity > 7 ? 'text-red-500' : 'text-green-500'}`}>{worker.intensity}/10</span>
+           </div>
+
+           <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+             <span className="text-xs font-bold text-slate-500 uppercase block mb-1">Roles / Llamamientos</span>
+             <div className="flex flex-wrap gap-1">
+               {worker.functionalRoles.map(r => (
+                 <span key={r} className="px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded text-xs">
+                   {r}
+                 </span>
+               ))}
+               {worker.functionalRoles.length === 0 && <span className="text-sm text-slate-400">Sin roles asignados</span>}
+             </div>
            </div>
            
            <div>
@@ -863,7 +875,7 @@ const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin:
 const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdmin: boolean, workers: Worker[], roles: FunctionalRole[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [workerForm, setWorkerForm] = useState<Partial<Worker>>({ intensity: 5 });
+  const [workerForm, setWorkerForm] = useState<Partial<Worker>>({ intensity: 5, functionalRoles: [] });
 
   const startEdit = (worker: Worker) => {
     setWorkerForm({ ...worker });
@@ -872,19 +884,30 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
   };
 
   const resetForm = () => {
-    setWorkerForm({ intensity: 5 });
+    setWorkerForm({ intensity: 5, functionalRoles: [] });
     setEditingId(null);
     setShowForm(false);
   };
 
+  const toggleRole = (roleName: string) => {
+    setWorkerForm(prev => {
+      const currentRoles = prev.functionalRoles || [];
+      if (currentRoles.includes(roleName)) {
+        return { ...prev, functionalRoles: currentRoles.filter(r => r !== roleName) };
+      } else {
+        return { ...prev, functionalRoles: [...currentRoles, roleName] };
+      }
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workerForm.name || !workerForm.functionalRole) return;
+    if (!workerForm.name) return;
 
     const workerData: Worker = {
       id: editingId || `w${Date.now()}`,
       name: workerForm.name,
-      functionalRole: workerForm.functionalRole,
+      functionalRoles: workerForm.functionalRoles || [],
       intensity: workerForm.intensity || 5,
       externalNotes: workerForm.externalNotes || '',
       managerId: workerForm.managerId,
@@ -927,20 +950,25 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
                 required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Rol Funcional / Llamamiento</label>
-              <select
-                 className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none" 
-                 value={workerForm.functionalRole || ''}
-                 onChange={e => setWorkerForm({...workerForm, functionalRole: e.target.value})}
-                 required
-              >
-                <option value="">-- Seleccionar Rol --</option>
-                {roles.map(role => (
-                  <option key={role.id} value={role.name}>{role.name}</option>
-                ))}
-              </select>
+            
+            <div className="row-span-2">
+              <label className="block text-sm font-medium mb-1">Roles / Llamamientos (Selección Múltiple)</label>
+              <div className="max-h-48 overflow-y-auto border rounded p-2 dark:bg-slate-700 dark:border-slate-600 space-y-1">
+                 {roles.map(role => (
+                   <label key={role.id} className="flex items-center gap-2 p-1 hover:bg-slate-100 dark:hover:bg-slate-600 rounded cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={(workerForm.functionalRoles || []).includes(role.name)}
+                        onChange={() => toggleRole(role.name)}
+                        className="rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">{role.name}</span>
+                   </label>
+                 ))}
+                 {roles.length === 0 && <span className="text-sm text-slate-400">No hay roles definidos. Ve a la vista de Roles para crear uno.</span>}
+              </div>
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-1">Nivel Intensidad (1-10)</label>
               <input 
@@ -1007,9 +1035,16 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
                  </div>
                  <div>
                     <h3 className="font-bold text-slate-800 dark:text-slate-200">{worker.name}</h3>
-                    <span className="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide mt-0.5">
-                      {worker.functionalRole}
-                    </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {worker.functionalRoles.slice(0, 2).map(r => (
+                        <span key={r} className="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide">
+                          {r}
+                        </span>
+                      ))}
+                      {worker.functionalRoles.length > 2 && (
+                         <span className="text-[10px] text-slate-400">+{worker.functionalRoles.length - 2}</span>
+                      )}
+                    </div>
                  </div>
               </div>
               <div className={`w-6 h-6 rounded flex items-center justify-center text-white font-bold text-xs ${worker.intensity > 7 ? 'bg-red-500' : worker.intensity > 4 ? 'bg-blue-500' : 'bg-green-500'}`} title={`Intensidad: ${worker.intensity}`}>
@@ -1305,7 +1340,7 @@ const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: a
                            </div>
                            <div>
                               <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{w.name}</p>
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400">{w.functionalRole}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400">{w.functionalRoles.join(', ')}</p>
                            </div>
                         </div>
                       ) : null;
@@ -1364,7 +1399,7 @@ const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: a
                      <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[10px]">{worker.name.charAt(0)}</div>
                      <div>
                        <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{worker.name}</div>
-                       <div className="text-[10px] text-slate-400">{worker.functionalRole}</div>
+                       <div className="text-[10px] text-slate-400">{worker.functionalRoles.join(', ')}</div>
                      </div>
                   </div>
                 </label>
@@ -1701,7 +1736,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                         disabled={!formTeamId}
                       >
                         <option value="">-- Seleccionar --</option>
-                        {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRole})</option>)}
+                        {availableWorkers.map(w => <option key={w.id} value={w.id}>{w.name} ({w.functionalRoles.join(', ')})</option>)}
                       </select>
                   </div>
                   <div>

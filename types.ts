@@ -14,7 +14,7 @@ export interface FunctionalRole {
 export interface Worker {
   id: string;
   name: string;
-  functionalRole: string; // Now refers to a FunctionalRole name or id
+  functionalRoles: string[]; // Changed to array to support multiple roles
   intensity: number; // 1-10
   externalNotes?: string; // Private to admin
   managerId?: string; // Hierarchy ID

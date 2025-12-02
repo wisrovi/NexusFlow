@@ -23,7 +23,7 @@ export const INITIAL_WORKERS: Worker[] = [
   { 
     id: 'w1', 
     name: 'William Rodriguez', 
-    functionalRole: 'Presidente de Quórum de Élderes', 
+    functionalRoles: ['Presidente de Quórum de Élderes'], 
     intensity: 10, 
     externalNotes: 'Líder principal', 
     managerId: undefined 

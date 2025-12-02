@@ -203,7 +203,11 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
            const isHigh = data.intensity > 7;
            const isLow = data.intensity < 4;
            const intensityColor = isHigh ? 'text-red-500' : isLow ? 'text-green-500' : 'text-blue-500';
-           
+           // Join roles for display
+           const rolesDisplay = data.functionalRoles && data.functionalRoles.length > 0 
+             ? data.functionalRoles.join(', ') 
+             : 'Sin Rol';
+
            return `
              <div class="w-[240px] bg-white rounded-xl shadow-md border border-slate-200 p-3 flex items-center gap-3 relative overflow-hidden h-full group hover:shadow-xl transition-all">
                 <div class="absolute top-2 right-2 flex flex-col items-end">
@@ -216,7 +220,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 
                 <div class="min-w-0 flex-1">
                    <div class="font-bold text-sm text-slate-900 truncate pr-4" title="${name}">${name}</div>
-                   <div class="text-[10px] text-slate-500 uppercase tracking-wide font-bold truncate">${data.functionalRole}</div>
+                   <div class="text-[10px] text-slate-500 uppercase tracking-wide font-bold truncate" title="${rolesDisplay}">${rolesDisplay}</div>
                    ${data.managerId ? `<div class="text-[9px] text-slate-400 mt-1 truncate">Reporta a: ...${data.managerId.slice(-4)}</div>` : ''}
                 </div>
              </div>
