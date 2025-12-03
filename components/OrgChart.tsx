@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Project, Team, Worker, Task, GraphNode } from '../types';
-import { Filter, RefreshCw, X, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Filter, X, AlertTriangle, Clock, Calendar, User as UserIcon } from 'lucide-react';
 
 interface OrgChartProps {
   projects: Project[];
@@ -243,8 +243,8 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
 
     nodes.append("foreignObject")
       .attr("width", 240)
-      .attr("height", 100)
-      .attr("y", -50)
+      .attr("height", 110)
+      .attr("y", -55)
       .attr("x", -10)
       .style("overflow", "visible")
       .style("pointer-events", "none")
@@ -326,9 +326,9 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
              borderClass = "border-l-4 border-l-yellow-500";
            }
            if(status === 'RED') { 
-             styles = "border-red-300 bg-red-50 shadow-md shadow-red-100/50"; 
+             styles = "border-red-300 bg-red-50 shadow-md shadow-red-100/50 ring-2 ring-red-100"; 
              borderClass = "border-l-4 border-l-red-500";
-             labelClass = "text-red-900 font-medium";
+             labelClass = "text-red-900 font-bold";
            }
 
            // Stage Badge
@@ -342,39 +342,49 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
              stageLabel = "DONE";
            }
 
-           const dueDateDisplay = task.dueDate 
-             ? new Date(task.dueDate).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) 
+           // Date Logic (Normalize to ignore time for today comparison)
+           const today = new Date();
+           today.setHours(0,0,0,0);
+           const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+           let dateClass = "text-slate-400";
+           
+           if (dueDate) {
+              const d = new Date(dueDate);
+              d.setHours(0,0,0,0);
+              if (d < today && task.stage !== 'DONE') dateClass = "text-red-600 font-bold animate-pulse";
+              else if (d.getTime() === today.getTime() && task.stage !== 'DONE') dateClass = "text-amber-600 font-bold";
+           }
+
+           const dueDateDisplay = dueDate 
+             ? dueDate.toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) 
              : '';
 
-           const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
-           const dateClass = isOverdue && task.stage !== 'DONE' ? 'text-red-600 font-bold' : 'text-slate-400';
-
            return `
-             <div class="w-[220px] rounded-lg shadow-sm border p-2 flex flex-col justify-between h-[90px] ${styles} ${borderClass} hover:scale-105 transition-transform group relative bg-opacity-95 backdrop-blur-sm">
+             <div class="w-[230px] rounded-lg shadow-sm border p-2.5 flex flex-col justify-between h-[96px] ${styles} ${borderClass} hover:scale-105 transition-transform group relative bg-opacity-95 backdrop-blur-sm">
                 
                 <div class="flex justify-between items-start gap-2">
                    <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-1.5 mb-1">
+                      <div class="flex items-center gap-1.5 mb-1.5">
                         <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ${stageColor}">
                            ${stageLabel}
                         </span>
-                        ${task.status === 'RED' ? `<span class="text-[9px] bg-red-100 text-red-700 px-1 rounded font-bold border border-red-200 animate-pulse">BLOQUEO</span>` : ''}
+                        ${task.status === 'RED' ? `<span class="text-[9px] bg-red-600 text-white px-1.5 rounded-sm font-bold shadow-sm animate-pulse">BLOQUEO</span>` : ''}
                       </div>
-                      <div class="text-xs ${labelClass} leading-tight line-clamp-2" title="${name}">${name}</div>
+                      <div class="text-xs ${labelClass} leading-tight line-clamp-2 pr-1" title="${name}">${name}</div>
                    </div>
                 </div>
 
-                <div class="flex items-center justify-between border-t ${status === 'RED' ? 'border-red-200' : 'border-slate-100'} pt-1.5 mt-1">
-                   <div class="flex items-center gap-1.5" title="Responsable: ${assignee?.name}">
-                      <div class="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600 shadow-sm shrink-0">
+                <div class="flex items-center justify-between border-t ${status === 'RED' ? 'border-red-200' : 'border-slate-100'} pt-2 mt-1">
+                   <div class="flex items-center gap-1.5" title="Responsable: ${assignee?.name || 'Sin asignar'}">
+                      <div class="w-5 h-5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[9px] font-bold text-slate-700 shadow-sm shrink-0">
                          ${assigneeInitials}
                       </div>
-                      <span class="text-[10px] text-slate-500 truncate max-w-[70px]">${assignee?.name?.split(' ')[0] || ''}</span>
+                      <span class="text-[10px] text-slate-600 font-medium truncate max-w-[80px]">${assignee?.name?.split(' ')[0] || ''}</span>
                    </div>
                    
                    ${dueDateDisplay ? `
-                   <div class="flex items-center gap-1 text-[10px] ${dateClass}" title="Vencimiento">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                   <div class="flex items-center gap-1 text-[10px] ${dateClass}" title="Vencimiento: ${dueDate?.toLocaleDateString()}">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                       ${dueDateDisplay}
                    </div>
                    ` : ''}
