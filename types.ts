@@ -38,11 +38,14 @@ export interface Team {
 
 export type TaskStatus = 'GREEN' | 'YELLOW' | 'RED';
 
+export type TaskStage = 'TODO' | 'IN_PROGRESS' | 'DONE';
+
 export interface Task {
   id: string;
   title: string;
   workerId: string; // Assigned worker
   status: TaskStatus;
+  stage: TaskStage; // Kanban Column
   teamId: string;
   projectId: string;
   createdAt: string; // ISO Date String

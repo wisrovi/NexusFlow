@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  User, Role, Worker, Project, Team, Task, TaskStatus, GraphNode, FunctionalRole
+  User, Role, Worker, Project, Team, Task, TaskStatus, TaskStage, GraphNode, FunctionalRole
 } from './types';
 import { 
   INITIAL_PROJECTS, INITIAL_TEAMS, INITIAL_WORKERS, INITIAL_TASKS, INITIAL_FUNCTIONAL_ROLES
@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -140,8 +140,17 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
       return (
         <div className="space-y-4">
            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">Estado Actual:</span>
+              <span className="text-sm text-slate-500">Estado Diagnóstico:</span>
               <Badge status={task.status} />
+           </div>
+
+           <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Etapa:</span>
+              <span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 border dark:border-slate-600">
+                {task.stage === 'TODO' && 'Por Hacer'}
+                {task.stage === 'IN_PROGRESS' && 'En Progreso'}
+                {task.stage === 'DONE' && 'Hecho'}
+              </span>
            </div>
            
            {task.status === 'RED' && (
@@ -1537,6 +1546,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   const [formWorkerId, setFormWorkerId] = useState('');
   const [formTitle, setFormTitle] = useState('');
   const [formStatus, setFormStatus] = useState<TaskStatus>('GREEN');
+  const [formStage, setFormStage] = useState<TaskStage>('TODO');
   const [formDueDate, setFormDueDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
@@ -1548,6 +1558,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormWorkerId('');
     setFormTitle('');
     setFormStatus('GREEN');
+    setFormStage('TODO');
     setFormDueDate('');
     setFormNotes('');
     setIsModalOpen(true);
@@ -1560,6 +1571,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     setFormWorkerId(task.workerId);
     setFormTitle(task.title);
     setFormStatus(task.status);
+    setFormStage(task.stage || 'TODO'); // Default for legacy data
     // Format date for input type="date"
     setFormDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
     setFormNotes(task.notes || '');
@@ -1576,6 +1588,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
       teamId: formTeamId,
       projectId: formProjectId,
       status: formStatus,
+      stage: formStage,
       createdAt: editingTask ? editingTask.createdAt : new Date().toISOString(),
       dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined,
       notes: formNotes
@@ -1611,13 +1624,13 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent, newStatus: TaskStatus) => {
+  const handleDrop = (e: React.DragEvent, newStage: TaskStage) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData("taskId");
     const task = tasks.find(t => t.id === taskId);
     
-    if (task && task.status !== newStatus && isAdmin) {
-      handleQuickStatusChange(task, newStatus);
+    if (task && (task.stage || 'TODO') !== newStage && isAdmin) {
+      editTask({ ...task, stage: newStage });
     }
   };
 
@@ -1737,6 +1750,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                     <tr>
                       <th className="px-6 py-3">Estado</th>
                       <th className="px-6 py-3">Tarea</th>
+                      <th className="px-6 py-3 hidden lg:table-cell">Etapa</th>
                       <th className="px-6 py-3 hidden lg:table-cell">Fechas</th>
                       <th className="px-6 py-3 hidden md:table-cell">Proyecto / Equipo</th>
                       <th className="px-6 py-3 hidden md:table-cell">Responsable</th>
@@ -1786,6 +1800,11 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                               </div>
                             )}
                           </td>
+                          <td className="px-6 py-4 hidden lg:table-cell">
+                            <span className="text-xs font-bold uppercase text-slate-500 bg-slate-100 dark:bg-slate-800 dark:text-slate-400 px-2 py-1 rounded">
+                              {task.stage === 'TODO' ? 'Por Hacer' : task.stage === 'IN_PROGRESS' ? 'En Progreso' : 'Hecho'}
+                            </span>
+                          </td>
                           <td className="px-6 py-4 hidden lg:table-cell text-xs text-slate-500 dark:text-slate-400">
                              <div title="Creada" className="flex items-center gap-1 mb-1">
                                <Calendar size={12} className="text-slate-400" /> 
@@ -1833,7 +1852,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                     })}
                     {groupTasks.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
+                        <td colSpan={7} className="px-6 py-8 text-center text-slate-400 italic">No hay tareas en este grupo.</td>
                       </tr>
                     )}
                   </tbody>
@@ -1845,64 +1864,64 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
       ) : (
         /* KANBAN BOARD */
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-h-[500px]">
-           {/* GREEN COLUMN */}
+           {/* TODO COLUMN */}
            <div 
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'GREEN')}
+              onDrop={(e) => handleDrop(e, 'TODO')}
               className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
            >
-              <div className="flex justify-between items-center border-b border-green-200 dark:border-green-900 pb-3">
+              <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-3">
+                 <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <Circle size={18} /> POR HACER
+                 </h3>
+                 <span className="bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded text-xs font-bold">
+                    {filteredTasks.filter(t => (t.stage || 'TODO') === 'TODO').length}
+                 </span>
+              </div>
+              <div className="flex-1 space-y-3">
+                 {filteredTasks.filter(t => (t.stage || 'TODO') === 'TODO').map(task => (
+                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
+                 ))}
+              </div>
+           </div>
+
+           {/* IN PROGRESS COLUMN */}
+           <div 
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'IN_PROGRESS')}
+              className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 flex flex-col gap-4 border border-blue-100 dark:border-blue-900/30"
+           >
+              <div className="flex justify-between items-center border-b border-blue-200 dark:border-blue-800 pb-3">
+                 <h3 className="font-bold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                    <ArrowRightCircle size={18} /> EN PROGRESO
+                 </h3>
+                 <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-xs font-bold">
+                    {filteredTasks.filter(t => t.stage === 'IN_PROGRESS').length}
+                 </span>
+              </div>
+              <div className="flex-1 space-y-3">
+                 {filteredTasks.filter(t => t.stage === 'IN_PROGRESS').map(task => (
+                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
+                 ))}
+              </div>
+           </div>
+
+           {/* DONE COLUMN */}
+           <div 
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, 'DONE')}
+              className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 flex flex-col gap-4 border border-green-100 dark:border-green-900/30"
+           >
+              <div className="flex justify-between items-center border-b border-green-200 dark:border-green-800 pb-3">
                  <h3 className="font-bold text-green-700 dark:text-green-400 flex items-center gap-2">
-                    <CheckCircle size={18} /> GREEN
+                    <CheckSquare size={18} /> HECHO
                  </h3>
                  <span className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-0.5 rounded text-xs font-bold">
-                    {filteredTasks.filter(t => t.status === 'GREEN').length}
+                    {filteredTasks.filter(t => t.stage === 'DONE').length}
                  </span>
               </div>
               <div className="flex-1 space-y-3">
-                 {filteredTasks.filter(t => t.status === 'GREEN').map(task => (
-                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
-                 ))}
-              </div>
-           </div>
-
-           {/* YELLOW COLUMN */}
-           <div 
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'YELLOW')}
-              className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
-           >
-              <div className="flex justify-between items-center border-b border-yellow-200 dark:border-yellow-900 pb-3">
-                 <h3 className="font-bold text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
-                    <AlertTriangle size={18} /> YELLOW
-                 </h3>
-                 <span className="bg-yellow-100 dark:bg-yellow-900/50 text-yellow-700 dark:text-yellow-300 px-2 py-0.5 rounded text-xs font-bold">
-                    {filteredTasks.filter(t => t.status === 'YELLOW').length}
-                 </span>
-              </div>
-              <div className="flex-1 space-y-3">
-                 {filteredTasks.filter(t => t.status === 'YELLOW').map(task => (
-                    <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
-                 ))}
-              </div>
-           </div>
-
-           {/* RED COLUMN */}
-           <div 
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'RED')}
-              className="bg-slate-100 dark:bg-slate-900/50 rounded-xl p-4 flex flex-col gap-4 border border-slate-200 dark:border-slate-800"
-           >
-              <div className="flex justify-between items-center border-b border-red-200 dark:border-red-900 pb-3">
-                 <h3 className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
-                    <AlertTriangle size={18} /> RED
-                 </h3>
-                 <span className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-2 py-0.5 rounded text-xs font-bold">
-                    {filteredTasks.filter(t => t.status === 'RED').length}
-                 </span>
-              </div>
-              <div className="flex-1 space-y-3">
-                 {filteredTasks.filter(t => t.status === 'RED').map(task => (
+                 {filteredTasks.filter(t => t.stage === 'DONE').map(task => (
                     <KanbanCard key={task.id} task={task} projects={projects} workers={workers} isAdmin={isAdmin} onEdit={() => openEditModal(task)} onDragStart={handleDragStart} />
                  ))}
               </div>
@@ -2010,23 +2029,39 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                    />
                 </div>
 
+                <div>
+                   <label className="block text-sm font-medium mb-2">Estado de Salud</label>
+                   <div className="flex gap-4">
+                      {(['GREEN', 'YELLOW', 'RED'] as TaskStatus[]).map(s => (
+                         <label key={s} className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              name="status" 
+                              value={s}
+                              checked={formStatus === s}
+                              onChange={() => setFormStatus(s)}
+                            />
+                            <Badge status={s} />
+                         </label>
+                      ))}
+                   </div>
+                </div>
+
                 {editingTask && (
-                   <div>
-                     <label className="block text-sm font-medium mb-1">Estado</label>
-                     <div className="flex gap-4">
-                        {(['GREEN', 'YELLOW', 'RED'] as TaskStatus[]).map(s => (
-                           <label key={s} className="flex items-center gap-2 cursor-pointer">
-                              <input 
-                                type="radio" 
-                                name="status" 
-                                value={s}
-                                checked={formStatus === s}
-                                onChange={() => setFormStatus(s)}
-                              />
-                              <Badge status={s} />
-                           </label>
-                        ))}
-                     </div>
+                   <div className="mt-4">
+                      <label className="block text-sm font-medium mb-2">Etapa (Kanban)</label>
+                      <div className="flex gap-2 text-sm">
+                         {(['TODO', 'IN_PROGRESS', 'DONE'] as TaskStage[]).map(s => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setFormStage(s)}
+                              className={`px-3 py-1 rounded border ${formStage === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600'}`}
+                            >
+                               {s === 'TODO' ? 'Por Hacer' : s === 'IN_PROGRESS' ? 'En Progreso' : 'Hecho'}
+                            </button>
+                         ))}
+                      </div>
                    </div>
                 )}
 
@@ -2053,13 +2088,17 @@ const KanbanCard = ({ task, projects, workers, isAdmin, onEdit, onDragStart }: {
    const project = projects.find(p => p.id === task.projectId);
    const worker = workers.find(w => w.id === task.workerId);
    
+   const borderClass = task.status === 'RED' 
+    ? 'border-red-300 dark:border-red-800 shadow-sm shadow-red-100 dark:shadow-none bg-red-50 dark:bg-red-900/10' 
+    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800';
+
    return (
       <div 
         draggable={isAdmin}
         onDragStart={(e) => onDragStart(e, task.id)}
         className={`
-           bg-white dark:bg-slate-800 p-3 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 
-           hover:shadow-md transition cursor-grab active:cursor-grabbing group
+           p-3 rounded-lg shadow-sm ${borderClass} border
+           hover:shadow-md transition cursor-grab active:cursor-grabbing group relative
         `}
       >
          <div className="flex justify-between items-start mb-2">
@@ -2069,19 +2108,23 @@ const KanbanCard = ({ task, projects, workers, isAdmin, onEdit, onDragStart }: {
             >
                {project?.name}
             </span>
-            {isAdmin && (
-               <button onClick={onEdit} className="text-slate-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition">
-                  <Pencil size={14} />
-               </button>
-            )}
+            <div className="flex items-center gap-2">
+               {/* Always show health badge in Kanban Card */}
+               <Badge status={task.status} />
+               {isAdmin && (
+                  <button onClick={onEdit} className="text-slate-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition">
+                     <Pencil size={14} />
+                  </button>
+               )}
+            </div>
          </div>
          
          <p className="font-medium text-slate-800 dark:text-slate-200 text-sm mb-3 line-clamp-2">{task.title}</p>
          
          {task.status === 'RED' && (
-            <div className="text-xs text-red-500 mb-3 bg-red-50 dark:bg-red-900/10 p-1.5 rounded border border-red-100 dark:border-red-900/30 flex items-start gap-1">
+            <div className="text-xs text-red-500 mb-3 bg-red-100 dark:bg-red-900/30 p-1.5 rounded border border-red-200 dark:border-red-800 flex items-start gap-1">
                <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-               <span className="leading-tight">{task.blockReason || 'Bloqueado'}</span>
+               <span className="leading-tight font-semibold">{task.blockReason || 'Bloqueado'}</span>
             </div>
          )}
          
