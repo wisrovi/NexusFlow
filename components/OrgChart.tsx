@@ -312,29 +312,72 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
         }
 
         if (type === 'TASK') {
-           const status = data.status;
+           const task = data as Task;
+           const status = task.status;
+           const assignee = workers.find(w => w.id === task.workerId);
+           const assigneeInitials = assignee ? assignee.name.charAt(0) : '?';
+           
            let styles = "border-slate-200 bg-white";
-           let icon = `<span class="text-green-600 font-bold">✓</span>`;
-           let label = "text-slate-600";
+           let borderClass = "border-l-4 border-l-green-500";
+           let labelClass = "text-slate-700";
            
            if(status === 'YELLOW') { 
              styles = "border-yellow-200 bg-yellow-50"; 
-             icon = `<span class="text-yellow-600 text-lg">●</span>`;
+             borderClass = "border-l-4 border-l-yellow-500";
            }
            if(status === 'RED') { 
-             styles = "border-red-300 bg-red-50 shadow-red-100"; 
-             icon = `<span class="text-red-600 font-bold text-lg">!</span>`;
-             label = "text-red-800 font-medium";
+             styles = "border-red-300 bg-red-50 shadow-md shadow-red-100/50"; 
+             borderClass = "border-l-4 border-l-red-500";
+             labelClass = "text-red-900 font-medium";
            }
 
+           // Stage Badge
+           let stageColor = "bg-slate-100 text-slate-500 border-slate-200";
+           let stageLabel = "TODO";
+           if (task.stage === 'IN_PROGRESS') {
+             stageColor = "bg-blue-100 text-blue-600 border-blue-200";
+             stageLabel = "WIP";
+           } else if (task.stage === 'DONE') {
+             stageColor = "bg-emerald-100 text-emerald-600 border-emerald-200";
+             stageLabel = "DONE";
+           }
+
+           const dueDateDisplay = task.dueDate 
+             ? new Date(task.dueDate).toLocaleDateString(undefined, {month:'numeric', day:'numeric'}) 
+             : '';
+
+           const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+           const dateClass = isOverdue && task.stage !== 'DONE' ? 'text-red-600 font-bold' : 'text-slate-400';
+
            return `
-             <div class="w-[220px] rounded-md shadow-sm border p-2 flex items-center gap-3 h-16 ${styles} hover:scale-105 transition-transform">
-                <div class="shrink-0 w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm">
-                   ${icon}
+             <div class="w-[220px] rounded-lg shadow-sm border p-2 flex flex-col justify-between h-[90px] ${styles} ${borderClass} hover:scale-105 transition-transform group relative bg-opacity-95 backdrop-blur-sm">
+                
+                <div class="flex justify-between items-start gap-2">
+                   <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1.5 mb-1">
+                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ${stageColor}">
+                           ${stageLabel}
+                        </span>
+                        ${task.status === 'RED' ? `<span class="text-[9px] bg-red-100 text-red-700 px-1 rounded font-bold border border-red-200 animate-pulse">BLOQUEO</span>` : ''}
+                      </div>
+                      <div class="text-xs ${labelClass} leading-tight line-clamp-2" title="${name}">${name}</div>
+                   </div>
                 </div>
-                <div class="min-w-0 flex-1">
-                   <div class="text-xs ${label} leading-tight line-clamp-2" title="${name}">${name}</div>
-                   ${status === 'RED' ? `<div class="text-[9px] text-red-600 font-bold mt-1 uppercase tracking-wider">BLOQUEO</div>` : ''}
+
+                <div class="flex items-center justify-between border-t ${status === 'RED' ? 'border-red-200' : 'border-slate-100'} pt-1.5 mt-1">
+                   <div class="flex items-center gap-1.5" title="Responsable: ${assignee?.name}">
+                      <div class="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600 shadow-sm shrink-0">
+                         ${assigneeInitials}
+                      </div>
+                      <span class="text-[10px] text-slate-500 truncate max-w-[70px]">${assignee?.name?.split(' ')[0] || ''}</span>
+                   </div>
+                   
+                   ${dueDateDisplay ? `
+                   <div class="flex items-center gap-1 text-[10px] ${dateClass}" title="Vencimiento">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      ${dueDateDisplay}
+                   </div>
+                   ` : ''}
                 </div>
              </div>
            `;
