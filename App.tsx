@@ -10,9 +10,9 @@ import {
 import { OrgChart } from './components/OrgChart';
 import { 
   LayoutDashboard, Users, FolderKanban, LogOut, 
-  AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
-  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, MessageSquare, Send, Bot
+  AlertTriangle, Clock, ChevronDown, Plus, Trash2, Shield,
+  Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -50,9 +50,9 @@ const generateAIResponse = async (prompt: string, contextData: any): Promise<str
       model: 'gemini-2.5-flash',
       contents: `Contexto del Sistema (Organización NexusFlow): ${JSON.stringify(simplifiedContext)}. 
                  Pregunta del Usuario: "${prompt}".
-                 Responde de manera concisa, profesional y útil para un administrador.`,
+                 Responde de manera concisa, profesional y útil para un administrador. Usa formato Markdown simple (negritas, listas).`,
       config: {
-        systemInstruction: "Eres NexusAI, un asistente experto en diagnóstico organizacional. Tu objetivo es ayudar a analizar cargas de trabajo, detectar bloqueos y sugerir mejoras basándote en los datos proporcionados. Usa formato Markdown."
+        systemInstruction: "Eres NexusAI, un asistente experto en diagnóstico organizacional. Tu objetivo es ayudar a analizar cargas de trabajo, detectar bloqueos y sugerir mejoras basándote en los datos proporcionados."
       }
     });
 
@@ -78,7 +78,11 @@ const generateTaskNotes = async (title: string, projectName: string): Promise<st
 };
 
 // --- AI CHAT COMPONENT ---
-const AIAssistant = ({ isOpen, onClose, contextData }: { isOpen: boolean, onClose: () => void, contextData: any }) => {
+const AIAssistant = ({ 
+  isOpen, onClose, contextData, pendingPrompt, clearPendingPrompt 
+}: { 
+  isOpen: boolean, onClose: () => void, contextData: any, pendingPrompt: string, clearPendingPrompt: () => void 
+}) => {
   const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([
     { role: 'model', text: 'Hola, soy NexusAI. ¿En qué puedo ayudarte a diagnosticar hoy?' }
   ]);
@@ -92,15 +96,23 @@ const AIAssistant = ({ isOpen, onClose, contextData }: { isOpen: boolean, onClos
     }
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  // Handle external triggers (e.g. clicking a button on a card)
+  useEffect(() => {
+    if (isOpen && pendingPrompt && !isLoading) {
+       handleSend(pendingPrompt);
+       clearPendingPrompt();
+    }
+  }, [isOpen, pendingPrompt]);
+
+  const handleSend = async (textOverride?: string) => {
+    const textToSend = textOverride || input;
+    if (!textToSend.trim() || isLoading) return;
     
-    const userMsg = input;
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
     setIsLoading(true);
 
-    const response = await generateAIResponse(userMsg, contextData);
+    const response = await generateAIResponse(textToSend, contextData);
     
     setMessages(prev => [...prev, { role: 'model', text: response }]);
     setIsLoading(false);
@@ -150,7 +162,7 @@ const AIAssistant = ({ isOpen, onClose, contextData }: { isOpen: boolean, onClos
           onKeyDown={e => e.key === 'Enter' && handleSend()}
         />
         <button 
-          onClick={handleSend}
+          onClick={() => handleSend()}
           disabled={!input.trim() || isLoading}
           className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
         >
@@ -418,6 +430,7 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isAIEnabled, setIsAIEnabled] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
+  const [pendingAIPrompt, setPendingAIPrompt] = useState('');
 
   // Graph Interaction State
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -441,6 +454,13 @@ export default function App() {
   };
 
   const logout = () => setCurrentUser(null);
+
+  // --- AI Triggers ---
+  const handleAITrigger = (prompt: string) => {
+    if (!isAIEnabled) return;
+    setPendingAIPrompt(prompt);
+    setIsAIChatOpen(true);
+  };
 
   // --- CRUD Handlers (Admin Only) ---
   const addWorker = (worker: Worker) => setWorkers([...workers, worker]);
@@ -689,15 +709,30 @@ export default function App() {
         {view === 'DASHBOARD' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-4 border-l-4 border-blue-500">
+              <Card className="p-4 border-l-4 border-blue-500 relative group">
+                {isAIEnabled && (
+                  <button onClick={() => handleAITrigger("Analiza el estado general de los proyectos activos y sugiere prioridades.")} className="absolute top-2 right-2 text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                     <Sparkles size={16} />
+                  </button>
+                )}
                 <p className="text-sm text-slate-500 dark:text-slate-400">Proyectos Activos</p>
                 <p className="text-2xl font-bold">{projects.length}</p>
               </Card>
-              <Card className="p-4 border-l-4 border-red-500">
+              <Card className="p-4 border-l-4 border-red-500 relative group">
+                {isAIEnabled && (
+                  <button onClick={() => handleAITrigger("Analiza los bloqueos críticos (ROJO) en las tareas y dame un plan de acción para resolverlos.")} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                     <Sparkles size={16} />
+                  </button>
+                )}
                 <p className="text-sm text-slate-500 dark:text-slate-400">Bloqueos Críticos (ROJO)</p>
                 <p className="text-2xl font-bold text-red-600">{tasks.filter(t => t.status === 'RED').length}</p>
               </Card>
-              <Card className="p-4 border-l-4 border-green-500">
+              <Card className="p-4 border-l-4 border-green-500 relative group">
+                {isAIEnabled && (
+                  <button onClick={() => handleAITrigger("Analiza la carga de trabajo de los miembros y dime quién está disponible para recibir más tareas.")} className="absolute top-2 right-2 text-slate-300 hover:text-green-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                     <Sparkles size={16} />
+                  </button>
+                )}
                 <p className="text-sm text-slate-500 dark:text-slate-400">Miembros Activos</p>
                 <p className="text-2xl font-bold">{workers.length}</p>
               </Card>
@@ -728,6 +763,8 @@ export default function App() {
             roles={functionalRoles}
             addWorker={addWorker}
             editWorker={editWorker}
+            isAIEnabled={isAIEnabled}
+            onAITrigger={handleAITrigger}
           />
         )}
 
@@ -738,6 +775,8 @@ export default function App() {
             workers={workers}
             editProject={editProject}
             addProject={addProject}
+            isAIEnabled={isAIEnabled}
+            onAITrigger={handleAITrigger}
           />
         )}
 
@@ -817,6 +856,8 @@ export default function App() {
             isOpen={isAIChatOpen} 
             onClose={() => setIsAIChatOpen(false)}
             contextData={{ projects, teams, workers, tasks }}
+            pendingPrompt={pendingAIPrompt}
+            clearPendingPrompt={() => setPendingAIPrompt('')}
           />
         </>
       )}
@@ -1136,7 +1177,11 @@ const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin:
   );
 };
 
-const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdmin: boolean, workers: Worker[], roles: FunctionalRole[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void }) => {
+const WorkersView = ({ 
+  isAdmin, workers, roles, addWorker, editWorker, isAIEnabled, onAITrigger 
+}: { 
+  isAdmin: boolean, workers: Worker[], roles: FunctionalRole[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void, isAIEnabled: boolean, onAITrigger: (prompt: string) => void 
+}) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [workerForm, setWorkerForm] = useState<Partial<Worker>>({ intensity: 5, functionalRoles: [] });
@@ -1285,7 +1330,7 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
             {isAdmin && (
               <button 
                 onClick={() => startEdit(worker)}
-                className="absolute top-4 right-12 text-slate-400 hover:text-blue-600 p-1 bg-white/80 dark:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-4 right-4 text-slate-400 hover:text-blue-600 p-1 bg-white/80 dark:bg-slate-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                 title="Editar Miembro"
               >
                 <Pencil size={16} />
@@ -1311,8 +1356,19 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
                     </div>
                  </div>
               </div>
-              <div className={`w-6 h-6 rounded flex items-center justify-center text-white font-bold text-xs ${worker.intensity > 7 ? 'bg-red-500' : worker.intensity > 4 ? 'bg-blue-500' : 'bg-green-500'}`} title={`Intensidad: ${worker.intensity}`}>
-                {worker.intensity}
+              <div className="flex flex-col items-center gap-2">
+                 <div className={`w-6 h-6 rounded flex items-center justify-center text-white font-bold text-xs ${worker.intensity > 7 ? 'bg-red-500' : worker.intensity > 4 ? 'bg-blue-500' : 'bg-green-500'}`} title={`Intensidad: ${worker.intensity}`}>
+                   {worker.intensity}
+                 </div>
+                 {isAIEnabled && (
+                    <button 
+                      onClick={() => onAITrigger(`Analiza el perfil y la carga de trabajo de ${worker.name}. ¿Está sobrecargado? Sugiere recomendaciones.`)}
+                      className="text-slate-300 hover:text-purple-500 transition"
+                      title="Analizar con IA"
+                    >
+                       <Sparkles size={14} />
+                    </button>
+                 )}
               </div>
             </div>
             
@@ -1336,7 +1392,7 @@ const WorkersView = ({ isAdmin, workers, roles, addWorker, editWorker }: { isAdm
 };
 
 const ProjectsView = ({ 
-  isAdmin, projects, workers, editProject, addProject 
+  isAdmin, projects, workers, editProject, addProject, isAIEnabled, onAITrigger 
 }: any) => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
@@ -1415,7 +1471,16 @@ const ProjectsView = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map((project: Project) => (
-          <Card key={project.id} className="p-0 overflow-hidden hover:shadow-md transition">
+          <Card key={project.id} className="p-0 overflow-hidden hover:shadow-md transition group relative">
+             {isAIEnabled && (
+                <button 
+                  onClick={() => onAITrigger(`Dame un reporte de estado detallado del proyecto "${project.name}" y sugiere cómo optimizarlo.`)}
+                  className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-slate-800/90 rounded-full text-slate-400 hover:text-blue-500 shadow-sm opacity-0 group-hover:opacity-100 transition"
+                  title="Generar Reporte IA"
+                >
+                   <Sparkles size={14} />
+                </button>
+             )}
              <div className="h-2" style={{ backgroundColor: project.color }}></div>
              <div className="p-6">
                 <div className="flex justify-between items-start mb-4">
