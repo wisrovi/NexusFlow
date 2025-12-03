@@ -1,4 +1,6 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { GoogleGenAI } from "@google/genai";
 import { 
   User, Role, Worker, Project, Team, Task, TaskStatus, TaskStage, GraphNode, FunctionalRole
 } from './types';
@@ -10,7 +12,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, MessageSquare, Send, Bot
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -27,6 +29,138 @@ const Badge = ({ status }: { status: TaskStatus }) => {
   };
   return <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${styles[status]}`}>{status}</span>;
 };
+
+// --- AI SERVICE ---
+const generateAIResponse = async (prompt: string, contextData: any): Promise<string> => {
+  if (!process.env.API_KEY) {
+    return "Error: API Key no configurada. Asegúrate de tener una clave válida en el entorno.";
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Simplify context to save tokens and reduce noise
+    const simplifiedContext = {
+      Projects: contextData.projects.map((p: Project) => ({ name: p.name, desc: p.description })),
+      Workers: contextData.workers.map((w: Worker) => ({ name: w.name, roles: w.functionalRoles, intensity: w.intensity })),
+      Tasks: contextData.tasks.map((t: Task) => ({ title: t.title, status: t.status, stage: t.stage, assignedTo: contextData.workers.find((w:Worker) => w.id === t.workerId)?.name, blockReason: t.blockReason }))
+    };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Contexto del Sistema (Organización NexusFlow): ${JSON.stringify(simplifiedContext)}. 
+                 Pregunta del Usuario: "${prompt}".
+                 Responde de manera concisa, profesional y útil para un administrador.`,
+      config: {
+        systemInstruction: "Eres NexusAI, un asistente experto en diagnóstico organizacional. Tu objetivo es ayudar a analizar cargas de trabajo, detectar bloqueos y sugerir mejoras basándote en los datos proporcionados. Usa formato Markdown."
+      }
+    });
+
+    return response.text || "No se pudo generar una respuesta.";
+  } catch (error) {
+    console.error("AI Error:", error);
+    return "Lo siento, hubo un error al conectar con el servicio de IA.";
+  }
+};
+
+const generateTaskNotes = async (title: string, projectName: string): Promise<string> => {
+  if (!process.env.API_KEY) return "";
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Genera notas breves, profesionales y accionables para una tarea titulada "${title}" dentro del proyecto "${projectName}". Incluye 3 bullet points sugeridos.`,
+    });
+    return response.text || "";
+  } catch (e) {
+    return "";
+  }
+};
+
+// --- AI CHAT COMPONENT ---
+const AIAssistant = ({ isOpen, onClose, contextData }: { isOpen: boolean, onClose: () => void, contextData: any }) => {
+  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([
+    { role: 'model', text: 'Hola, soy NexusAI. ¿En qué puedo ayudarte a diagnosticar hoy?' }
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+    
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setIsLoading(true);
+
+    const response = await generateAIResponse(userMsg, contextData);
+    
+    setMessages(prev => [...prev, { role: 'model', text: response }]);
+    setIsLoading(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed bottom-20 right-4 w-80 md:w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 h-[500px]">
+      <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
+        <div className="flex items-center gap-2">
+           <Sparkles size={18} className="text-yellow-300" />
+           <span className="font-bold">Nexus AI Assistant</span>
+        </div>
+        <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition"><X size={18} /></button>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-900/50" ref={scrollRef}>
+        {messages.map((m, idx) => (
+          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+             <div className={`max-w-[85%] rounded-2xl p-3 text-sm shadow-sm ${
+               m.role === 'user' 
+                 ? 'bg-blue-600 text-white rounded-br-none' 
+                 : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-600'
+             }`}>
+                {m.text.split('\n').map((line, i) => <p key={i} className="mb-1 last:mb-0">{line}</p>)}
+             </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+             <div className="bg-white dark:bg-slate-700 p-3 rounded-2xl rounded-bl-none border border-slate-100 dark:border-slate-600 flex gap-1">
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span>
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span>
+             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex gap-2">
+        <input 
+          className="flex-1 bg-slate-100 dark:bg-slate-900 border-none rounded-full px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+          placeholder="Pregunta sobre proyectos, tareas..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
+        />
+        <button 
+          onClick={handleSend}
+          disabled={!input.trim() || isLoading}
+          className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
+        >
+          <Send size={18} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 // --- MODALS ---
 
@@ -282,6 +416,8 @@ export default function App() {
   const [view, setView] = useState<'DASHBOARD' | 'WORKERS' | 'PROJECTS' | 'TEAMS' | 'TASKS' | 'ROLES' | 'SETTINGS' | 'ABOUT'>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isAIEnabled, setIsAIEnabled] = useState(false);
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
   // Graph Interaction State
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -518,12 +654,12 @@ export default function App() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8">
+      <main className="flex-1 overflow-y-auto h-screen p-4 md:p-8 relative">
         
         {/* Header */}
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               {view === 'DASHBOARD' && 'Mapa de Diagnóstico'}
               {view === 'WORKERS' && 'Directorio de Miembros'}
               {view === 'PROJECTS' && 'Portafolio de Proyectos'}
@@ -532,6 +668,7 @@ export default function App() {
               {view === 'ROLES' && 'Gestión de Roles y Llamamientos'}
               {view === 'SETTINGS' && 'Configuración del Sistema'}
               {view === 'ABOUT' && 'Acerca del Creador'}
+              {isAIEnabled && <span className="text-xs bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm"><Sparkles size={10} /> AI Activada</span>}
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
               Vista activa: <span className="font-medium text-blue-600 dark:text-blue-400">{currentUser.role === 'ADMIN' ? 'Control Total' : 'Solo Lectura'}</span>
@@ -625,6 +762,7 @@ export default function App() {
             addTask={addTask}
             editTask={editTaskDetails}
             deleteTask={deleteTask}
+            isAIEnabled={isAIEnabled}
           />
         )}
 
@@ -642,6 +780,8 @@ export default function App() {
           <SettingsView 
             data={{ projects, teams, workers, tasks, functionalRoles }}
             onImport={handleImportData}
+            isAIEnabled={isAIEnabled}
+            setIsAIEnabled={setIsAIEnabled}
           />
         )}
 
@@ -658,6 +798,27 @@ export default function App() {
           onClose={() => setSelectedNode(null)} 
           data={{ projects, teams, workers, tasks }}
         />
+      )}
+
+      {/* AI CHAT BUTTON & MODAL */}
+      {isAIEnabled && (
+        <>
+          <button 
+            onClick={() => setIsAIChatOpen(!isAIChatOpen)}
+            className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-xl hover:scale-105 transition-transform z-50 flex items-center gap-2 group"
+          >
+            {isAIChatOpen ? <X size={24} /> : <Bot size={24} />}
+            <span className={`max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold`}>
+              Nexus AI
+            </span>
+          </button>
+          
+          <AIAssistant 
+            isOpen={isAIChatOpen} 
+            onClose={() => setIsAIChatOpen(false)}
+            contextData={{ projects, teams, workers, tasks }}
+          />
+        </>
       )}
     </div>
   );
@@ -679,7 +840,11 @@ const NavButton = ({ active, onClick, icon, label, isOpen }: any) => (
 
 // --- SUB-VIEWS COMPONENTS ---
 
-const SettingsView = ({ data, onImport }: { data: any, onImport: (d: any) => void }) => {
+const SettingsView = ({ 
+  data, onImport, isAIEnabled, setIsAIEnabled 
+}: { 
+  data: any, onImport: (d: any) => void, isAIEnabled: boolean, setIsAIEnabled: (v: boolean) => void 
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = () => {
@@ -708,7 +873,6 @@ const SettingsView = ({ data, onImport }: { data: any, onImport: (d: any) => voi
       }
     };
     reader.readAsText(file);
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -722,6 +886,31 @@ const SettingsView = ({ data, onImport }: { data: any, onImport: (d: any) => voi
           Preferencias Generales
         </h3>
         <div className="space-y-4">
+          
+          {/* AI Toggle */}
+          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-800 rounded-lg border border-blue-100 dark:border-slate-600">
+             <div className="flex items-center gap-3">
+                <div className="p-2 bg-white dark:bg-slate-600 rounded-lg shadow-sm">
+                   <Sparkles size={20} className="text-blue-500 dark:text-yellow-400" />
+                </div>
+                <div>
+                   <p className="font-bold text-slate-800 dark:text-white">Inteligencia Artificial (Nexus AI)</p>
+                   <p className="text-xs text-slate-500 dark:text-slate-400">Activa el asistente inteligente para diagnósticos y sugerencias.</p>
+                </div>
+             </div>
+             <div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                <input 
+                  type="checkbox" 
+                  name="ai_toggle" 
+                  id="ai_toggle" 
+                  checked={isAIEnabled}
+                  onChange={(e) => setIsAIEnabled(e.target.checked)}
+                  className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-slate-300 checked:right-0 checked:border-blue-500"
+                />
+                <label htmlFor="ai_toggle" className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors ${isAIEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}></label>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
              <div className="flex items-center gap-3">
                 <Globe size={20} className="text-slate-500" />
@@ -845,7 +1034,7 @@ const AboutView = () => {
                     <Briefcase size={18} /> Skills & Expertise
                  </h4>
                  <div className="flex flex-wrap gap-2">
-                    {['React', 'TypeScript', 'Tailwind CSS', 'D3.js', 'System Architecture', 'UI/UX Design'].map(skill => (
+                    {['React', 'TypeScript', 'Tailwind CSS', 'D3.js', 'System Architecture', 'UI/UX Design', 'Google Gemini AI'].map(skill => (
                       <span key={skill} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-medium text-slate-600 dark:text-slate-400">
                         {skill}
                       </span>
@@ -1579,9 +1768,10 @@ interface TasksViewProps {
   addTask: (t: Task) => void;
   editTask: (t: Task) => void;
   deleteTask: (id: string) => void;
+  isAIEnabled: boolean;
 }
 
-const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, workers, addTask, editTask, deleteTask }) => {
+const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, workers, addTask, editTask, deleteTask, isAIEnabled }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'BOARD'>('LIST');
   const [groupBy, setGroupBy] = useState<'NONE' | 'PROJECT' | 'STATUS' | 'WORKER'>('NONE');
   const [filterText, setFilterText] = useState('');
@@ -1599,6 +1789,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   const [formStage, setFormStage] = useState<TaskStage>('TODO');
   const [formDueDate, setFormDueDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
 
   // Handle Opening Modal (Create vs Edit)
   const openCreateModal = () => {
@@ -1692,6 +1883,15 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
      if(!team) return [];
      return workers.filter(w => team.memberIds.includes(w.id));
   }, [formTeamId, teams, workers]);
+
+  const handleGenerateNotes = async () => {
+    if (!formTitle || !formProjectId) return;
+    setIsGeneratingNotes(true);
+    const projName = projects.find(p => p.id === formProjectId)?.name || "Proyecto";
+    const notes = await generateTaskNotes(formTitle, projName);
+    setFormNotes(prev => prev ? prev + "\n\n[IA Sugerencia]:\n" + notes : notes);
+    setIsGeneratingNotes(false);
+  };
 
 
   // Grouping Logic for LIST VIEW
@@ -2070,7 +2270,19 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
                 </div>
                 
                 <div className="md:col-span-2">
-                   <label className="block text-sm font-medium mb-1">Notas Adicionales (Opcional)</label>
+                   <div className="flex justify-between items-center mb-1">
+                      <label className="block text-sm font-medium">Notas Adicionales (Opcional)</label>
+                      {isAIEnabled && formTitle && (
+                         <button 
+                           type="button"
+                           onClick={handleGenerateNotes}
+                           disabled={isGeneratingNotes}
+                           className="text-xs flex items-center gap-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-2 py-0.5 rounded hover:bg-purple-200 transition"
+                         >
+                            <Sparkles size={12} /> {isGeneratingNotes ? 'Generando...' : 'Sugerir con IA'}
+                         </button>
+                      )}
+                   </div>
                    <textarea 
                       className="w-full p-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none dark:bg-slate-700 dark:border-slate-600 h-20 resize-none"
                       placeholder="Detalles extra sobre la tarea..."
@@ -2134,7 +2346,14 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
   );
 };
 
-const KanbanCard = ({ task, projects, workers, isAdmin, onEdit, onDragStart }: { task: Task, projects: Project[], workers: Worker[], isAdmin: boolean, onEdit: () => void, onDragStart: (e: React.DragEvent, id: string) => void }) => {
+const KanbanCard: React.FC<{
+  task: Task;
+  projects: Project[];
+  workers: Worker[];
+  isAdmin: boolean;
+  onEdit: () => void;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+}> = ({ task, projects, workers, isAdmin, onEdit, onDragStart }) => {
    const project = projects.find(p => p.id === task.projectId);
    const worker = workers.find(w => w.id === task.workerId);
    
