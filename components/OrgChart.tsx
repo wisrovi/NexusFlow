@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Project, Team, Worker, Task, GraphNode } from '../types';
-import { Filter, X, AlertTriangle, Clock, Calendar, User as UserIcon } from 'lucide-react';
+import { Filter, X, AlertTriangle } from 'lucide-react';
 
 interface OrgChartProps {
   projects: Project[];
@@ -101,6 +101,8 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 children: []
               }));
               
+              // If we are filtering by status, show the worker only if tasks exist. 
+              // If we are not filtering by status, show worker anyway (unless filtered by member)
               teamNode.children?.push({
                 name: worker.name,
                 type: "WORKER",

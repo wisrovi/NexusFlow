@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, Clock, ChevronDown, Plus, Trash2, Shield,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github, BrainCircuit
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github, BrainCircuit, MonitorPlay, ChevronRight, ChevronLeft
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -346,6 +346,147 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
   );
 };
 
+// --- PRESENTATION MODE COMPONENT ---
+
+const PresentationMode = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const SLIDES = [
+    {
+      title: "NexusFlow",
+      subtitle: "Diagnóstico Organizacional Inteligente",
+      icon: <Shield size={120} className="text-blue-500" />,
+      content: "Una plataforma integral para la gestión de proyectos, equipos y tareas con un enfoque en el diagnóstico visual de dependencias y cuellos de botella."
+    },
+    {
+      title: "El Problema",
+      subtitle: "Complejidad Oculta",
+      icon: <AlertTriangle size={120} className="text-red-500" />,
+      content: "Las organizaciones a menudo pierden de vista quién está haciendo qué, qué tareas están bloqueadas y qué miembros están sobrecargados. La información está dispersa y desconectada."
+    },
+    {
+      title: "La Solución Visual",
+      subtitle: "Mapa de Diagnóstico",
+      icon: <Activity size={120} className="text-green-500" />,
+      content: "NexusFlow utiliza un grafo interactivo para visualizar la jerarquía completa: Proyectos → Parejas/Equipos → Miembros → Tareas, permitiendo identificar problemas de un vistazo."
+    },
+    {
+      title: "Estructura Organizativa",
+      subtitle: "Roles y Parejas",
+      icon: <Users size={120} className="text-purple-500" />,
+      content: "Gestione miembros con roles funcionales específicos (Llamamientos) y organícelos en Parejas de Ministración o equipos de trabajo para una colaboración efectiva."
+    },
+    {
+      title: "Semáforo de Salud",
+      subtitle: "Sistema de Diagnóstico",
+      icon: <Filter size={120} className="text-yellow-500" />,
+      content: "Cada tarea tiene un estado de salud: VERDE (Al día), AMARILLO (Riesgo), ROJO (Bloqueo Crítico). Los bloqueos requieren registrar una causa raíz obligatoria."
+    },
+    {
+      title: "Gestión de Tareas",
+      subtitle: "Listas y Kanban",
+      icon: <FolderKanban size={120} className="text-indigo-500" />,
+      content: "Visualice el trabajo a su manera. Utilice listas detalladas con filtros avanzados o un tablero Kanban interactivo con 'Drag & Drop' para mover tareas entre etapas."
+    },
+    {
+      title: "Análisis de Carga",
+      subtitle: "Bienestar del Equipo",
+      icon: <UserCheck size={120} className="text-teal-500" />,
+      content: "Monitoree el nivel de intensidad (1-10) de cada miembro para prevenir el burnout y asegurar una distribución equitativa de las responsabilidades."
+    },
+    {
+      title: "Potenciado por IA",
+      subtitle: "Asistente Nexus (Gemini)",
+      icon: <Sparkles size={120} className="text-pink-500" />,
+      content: "Inteligencia Artificial integrada para analizar bloqueos, sugerir perfiles de miembros, redactar descripciones de proyectos y proponer planes de acción."
+    }
+  ];
+
+  const nextSlide = () => {
+    if (currentSlide < SLIDES.length - 1) setCurrentSlide(curr => curr + 1);
+  };
+
+  const prevSlide = () => {
+    if (currentSlide > 0) setCurrentSlide(curr => curr - 1);
+  };
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'ArrowRight') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, currentSlide]);
+
+  if (!isOpen) return null;
+
+  const slide = SLIDES[currentSlide];
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-slate-900 text-white flex flex-col animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="p-6 flex justify-between items-center">
+         <div className="flex items-center gap-2 text-slate-400">
+            <MonitorPlay size={24} />
+            <span className="font-bold tracking-widest uppercase text-sm">Modo Presentación</span>
+         </div>
+         <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition">
+            <X size={32} />
+         </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center max-w-5xl mx-auto w-full">
+         <div className="mb-8 animate-in zoom-in duration-500">
+            {slide.icon}
+         </div>
+         <h2 className="text-6xl font-black mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400 animate-in slide-in-from-bottom-4 duration-500">
+            {slide.title}
+         </h2>
+         <h3 className="text-3xl font-light text-slate-300 mb-8 animate-in slide-in-from-bottom-8 duration-700">
+            {slide.subtitle}
+         </h3>
+         <p className="text-xl text-slate-400 max-w-3xl leading-relaxed animate-in slide-in-from-bottom-10 duration-1000">
+            {slide.content}
+         </p>
+      </div>
+
+      {/* Footer / Controls */}
+      <div className="p-8 flex items-center justify-between">
+         <div className="flex gap-2">
+            {SLIDES.map((_, idx) => (
+               <div 
+                 key={idx} 
+                 className={`h-2 rounded-full transition-all duration-300 ${idx === currentSlide ? 'w-12 bg-blue-500' : 'w-2 bg-slate-700'}`}
+               />
+            ))}
+         </div>
+
+         <div className="flex gap-4">
+            <button 
+              onClick={prevSlide} 
+              disabled={currentSlide === 0}
+              className="p-4 rounded-full bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+            >
+               <ChevronLeft size={32} />
+            </button>
+            <button 
+              onClick={nextSlide} 
+              disabled={currentSlide === SLIDES.length - 1}
+              className="p-4 rounded-full bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition text-white shadow-lg shadow-blue-900/50"
+            >
+               <ChevronRight size={32} />
+            </button>
+         </div>
+      </div>
+    </div>
+  );
+};
+
 
 // --- MAIN APP ---
 
@@ -365,6 +506,9 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isAIEnabled, setIsAIEnabled] = useState(false);
+  
+  // Presentation Mode State
+  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
 
   // AI Analysis Modal State
   const [aiAnalysisResult, setAiAnalysisResult] = useState('');
@@ -602,7 +746,16 @@ export default function App() {
             />
           </nav>
 
-          <div className="p-4 border-t border-slate-800">
+          <div className="p-4 border-t border-slate-800 space-y-2">
+            <button 
+              onClick={() => setIsPresentationOpen(true)} 
+              className={`flex items-center gap-2 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/30 transition w-full px-4 py-2 rounded overflow-hidden whitespace-nowrap ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
+              title="Modo Presentación"
+            >
+              <div className="min-w-[18px]"><MonitorPlay size={18} /></div>
+              <span className={`transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0'}`}>Presentación</span>
+            </button>
+
             <button 
               onClick={logout} 
               className={`flex items-center gap-2 text-slate-400 hover:text-white transition w-full px-4 py-2 overflow-hidden whitespace-nowrap ${isSidebarOpen ? 'justify-start' : 'justify-center'}`}
@@ -789,9 +942,17 @@ export default function App() {
         isLoading={isAiLoading}
       />
 
+      {/* PRESENTATION MODE */}
+      <PresentationMode 
+        isOpen={isPresentationOpen} 
+        onClose={() => setIsPresentationOpen(false)} 
+      />
+
     </div>
   );
 }
+// ... rest of the file (NavButton, Sub-views, etc.)
+// Re-including the NavButton and Sub-views which were omitted in previous chunk for brevity but are needed for full file validity in replacement.
 
 const NavButton = ({ active, onClick, icon, label, isOpen }: any) => (
   <button 
@@ -1430,7 +1591,7 @@ const ProjectsView = ({
              onClick={() => { setTempProjectName(''); setTempProjectColor('#3b82f6'); setIsCreateProjectModalOpen(true); }}
              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition"
            >
-             <Plus size={18} /> Nuevo Proyecto
+             <Plus size={18} /> Nueva Proyecto
            </button>
         )}
       </div>
