@@ -86,8 +86,10 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 workerTasks = workerTasks.filter(t => t.status === filterStatus);
               }
 
-              // If filtering by status, only show worker if they have matching tasks
-              // If filtering by member, we want to show the member even if they have no tasks (unless status filter is also on)
+              // Strict Pruning:
+              // If filtering by STATUS, only show worker if they have tasks matching that status.
+              // If filtering by MEMBER only, show worker even if no tasks (context).
+              // If filtering by PROJECT only, show worker even if no tasks.
               if (filterStatus !== 'ALL' && workerTasks.length === 0) {
                  return; 
               }
@@ -122,7 +124,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
              // Filter Member
              if (filterMember !== 'ALL' && memberId !== filterMember) return;
              
-             // Avoid duplicates if already in a team (visual choice)
+             // Avoid duplicates if already in a team (visual choice for hierarchy)
              const inTeam = projTeams.some(t => t.memberIds.includes(memberId));
              
              if (!inTeam) {
@@ -155,15 +157,15 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
           });
         }
         
-        // Decision to add Project Node
+        // Decision to add Project Node to Root
         // If NO filters are applied, show everything (even empty projects)
-        // If filters ARE applied, only show projects with relevant content
+        // If filters ARE applied, only show projects with relevant content found
         if (!hasActiveFilters) {
            root.children?.push(projNode);
         } else if (hasRelevantChildren) {
            root.children?.push(projNode);
         } else if (filterProject !== 'ALL' && filterMember === 'ALL' && filterStatus === 'ALL') {
-           // Special case: If I explicitly selected a project, show it even if empty
+           // Special case: If I explicitly selected a project, show it even if empty to confirm selection
            root.children?.push(projNode);
         }
       });
@@ -449,16 +451,16 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
         </div>
 
         <div className="flex-1 min-w-[200px]">
-           <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Estado Tareas</label>
+           <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Estado Tarea</label>
            <select 
              className="w-full text-xs p-2 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
              value={filterStatus}
              onChange={(e) => setFilterStatus(e.target.value)}
            >
              <option value="ALL">Todos los Estados</option>
-             <option value="RED">⚠️ Bloqueos (RED)</option>
-             <option value="YELLOW">⚠️ En Riesgo (YELLOW)</option>
-             <option value="GREEN">✅ Al día (GREEN)</option>
+             <option value="GREEN">VERDE (Al día)</option>
+             <option value="YELLOW">AMARILLO (En Riesgo)</option>
+             <option value="RED">ROJO (Bloqueos)</option>
            </select>
         </div>
       </div>
