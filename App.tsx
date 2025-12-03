@@ -2088,17 +2088,23 @@ const KanbanCard = ({ task, projects, workers, isAdmin, onEdit, onDragStart }: {
    const project = projects.find(p => p.id === task.projectId);
    const worker = workers.find(w => w.id === task.workerId);
    
-   const borderClass = task.status === 'RED' 
-    ? 'border-red-300 dark:border-red-800 shadow-sm shadow-red-100 dark:shadow-none bg-red-50 dark:bg-red-900/10' 
-    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800';
+   const getStatusStyles = (s: TaskStatus) => {
+      switch(s) {
+         case 'RED': return 'bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500 border-y border-r border-red-200 dark:border-red-800';
+         case 'YELLOW': return 'bg-yellow-50 dark:bg-yellow-900/10 border-l-4 border-l-yellow-500 border-y border-r border-yellow-200 dark:border-yellow-800';
+         case 'GREEN': return 'bg-white dark:bg-slate-800 border-l-4 border-l-green-500 border-y border-r border-slate-200 dark:border-slate-700';
+         default: return 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700';
+      }
+   }
 
    return (
       <div 
         draggable={isAdmin}
         onDragStart={(e) => onDragStart(e, task.id)}
         className={`
-           p-3 rounded-lg shadow-sm ${borderClass} border
+           p-3 rounded-lg shadow-sm 
            hover:shadow-md transition cursor-grab active:cursor-grabbing group relative
+           ${getStatusStyles(task.status)}
         `}
       >
          <div className="flex justify-between items-start mb-2">
