@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, Clock, ChevronDown, Plus, Trash2, Shield,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github, BrainCircuit
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -30,46 +30,46 @@ const Badge = ({ status }: { status: TaskStatus }) => {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${styles[status]}`}>{status}</span>;
 };
 
-// --- AI SERVICE ---
-const generateAIResponse = async (prompt: string, contextData: any): Promise<string> => {
-  if (!process.env.API_KEY) {
-    return "Error: API Key no configurada. Asegúrate de tener una clave válida en el entorno.";
-  }
+// --- AI SERVICES ---
+
+const getAIClient = () => {
+  if (!process.env.API_KEY) return null;
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
+
+// 1. General Analysis (For Dashboard Modals)
+const generateAnalysis = async (prompt: string, contextData: any): Promise<string> => {
+  const ai = getAIClient();
+  if (!ai) return "Error: API Key no configurada.";
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // Simplify context to save tokens and reduce noise
     const simplifiedContext = {
-      Projects: contextData.projects.map((p: Project) => ({ name: p.name, desc: p.description })),
-      Workers: contextData.workers.map((w: Worker) => ({ name: w.name, roles: w.functionalRoles, intensity: w.intensity })),
-      Tasks: contextData.tasks.map((t: Task) => ({ title: t.title, status: t.status, stage: t.stage, assignedTo: contextData.workers.find((w:Worker) => w.id === t.workerId)?.name, blockReason: t.blockReason }))
+      Projects: contextData.projects.map((p: Project) => ({ name: p.name })),
+      Workers: contextData.workers.length,
+      TasksRed: contextData.tasks.filter((t:Task) => t.status === 'RED').length,
+      CriticalTasks: contextData.tasks.filter((t:Task) => t.status === 'RED').map((t:Task) => ({ title: t.title, reason: t.blockReason }))
     };
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Contexto del Sistema (Organización NexusFlow): ${JSON.stringify(simplifiedContext)}. 
-                 Pregunta del Usuario: "${prompt}".
-                 Responde de manera concisa, profesional y útil para un administrador. Usa formato Markdown simple (negritas, listas).`,
-      config: {
-        systemInstruction: "Eres NexusAI, un asistente experto en diagnóstico organizacional. Tu objetivo es ayudar a analizar cargas de trabajo, detectar bloqueos y sugerir mejoras basándote en los datos proporcionados."
-      }
+      contents: `Contexto: ${JSON.stringify(simplifiedContext)}. 
+                 Analiza: "${prompt}".
+                 Responde con formato Markdown, sé directo, profesional y propón soluciones.`,
     });
-
-    return response.text || "No se pudo generar una respuesta.";
+    return response.text || "No se pudo generar el análisis.";
   } catch (error) {
-    console.error("AI Error:", error);
-    return "Lo siento, hubo un error al conectar con el servicio de IA.";
+    return "Error al conectar con la IA.";
   }
 };
 
-const generateTaskNotes = async (title: string, projectName: string): Promise<string> => {
-  if (!process.env.API_KEY) return "";
+// 2. Form Helpers (Contextual Generation)
+const generateText = async (prompt: string): Promise<string> => {
+  const ai = getAIClient();
+  if (!ai) return "";
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Genera notas breves, profesionales y accionables para una tarea titulada "${title}" dentro del proyecto "${projectName}". Incluye 3 bullet points sugeridos.`,
+      contents: prompt,
     });
     return response.text || "";
   } catch (e) {
@@ -77,104 +77,40 @@ const generateTaskNotes = async (title: string, projectName: string): Promise<st
   }
 };
 
-// --- AI CHAT COMPONENT ---
-const AIAssistant = ({ 
-  isOpen, onClose, contextData, pendingPrompt, clearPendingPrompt 
-}: { 
-  isOpen: boolean, onClose: () => void, contextData: any, pendingPrompt: string, clearPendingPrompt: () => void 
-}) => {
-  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([
-    { role: 'model', text: 'Hola, soy NexusAI. ¿En qué puedo ayudarte a diagnosticar hoy?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+// --- MODALS ---
 
-  // Handle external triggers (e.g. clicking a button on a card)
-  useEffect(() => {
-    if (isOpen && pendingPrompt && !isLoading) {
-       handleSend(pendingPrompt);
-       clearPendingPrompt();
-    }
-  }, [isOpen, pendingPrompt]);
-
-  const handleSend = async (textOverride?: string) => {
-    const textToSend = textOverride || input;
-    if (!textToSend.trim() || isLoading) return;
-    
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: textToSend }]);
-    setIsLoading(true);
-
-    const response = await generateAIResponse(textToSend, contextData);
-    
-    setMessages(prev => [...prev, { role: 'model', text: response }]);
-    setIsLoading(false);
-  };
-
+const AIAnalysisModal = ({ isOpen, onClose, result, isLoading }: { isOpen: boolean, onClose: () => void, result: string, isLoading: boolean }) => {
   if (!isOpen) return null;
-
   return (
-    <div className="fixed bottom-20 right-4 w-80 md:w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 h-[500px]">
-      <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center">
-        <div className="flex items-center gap-2">
-           <Sparkles size={18} className="text-yellow-300" />
-           <span className="font-bold">Nexus AI Assistant</span>
-        </div>
-        <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition"><X size={18} /></button>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-900/50" ref={scrollRef}>
-        {messages.map((m, idx) => (
-          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-             <div className={`max-w-[85%] rounded-2xl p-3 text-sm shadow-sm ${
-               m.role === 'user' 
-                 ? 'bg-blue-600 text-white rounded-br-none' 
-                 : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-600'
-             }`}>
-                {m.text.split('\n').map((line, i) => <p key={i} className="mb-1 last:mb-0">{line}</p>)}
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
+       <Card className="w-full max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-violet-600 to-indigo-600 text-white flex justify-between items-center">
+             <div className="flex items-center gap-2 font-bold text-lg">
+                <BrainCircuit size={24} />
+                <span>Análisis Inteligente Nexus</span>
              </div>
+             <button onClick={onClose} className="hover:bg-white/20 p-1 rounded"><X size={20} /></button>
           </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-             <div className="bg-white dark:bg-slate-700 p-3 rounded-2xl rounded-bl-none border border-slate-100 dark:border-slate-600 flex gap-1">
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span>
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span>
-             </div>
+          <div className="p-6 overflow-y-auto flex-1 bg-slate-50 dark:bg-slate-900">
+             {isLoading ? (
+               <div className="flex flex-col items-center justify-center py-10 gap-4">
+                  <div className="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin"></div>
+                  <p className="text-slate-500 animate-pulse">Procesando datos organizacionales...</p>
+               </div>
+             ) : (
+               <div className="prose dark:prose-invert max-w-none text-sm">
+                  <div dangerouslySetInnerHTML={{ __html: result.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/- /g, '• ') }} />
+               </div>
+             )}
           </div>
-        )}
-      </div>
-
-      <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex gap-2">
-        <input 
-          className="flex-1 bg-slate-100 dark:bg-slate-900 border-none rounded-full px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
-          placeholder="Pregunta sobre proyectos, tareas..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
-        />
-        <button 
-          onClick={() => handleSend()}
-          disabled={!input.trim() || isLoading}
-          className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 transition shadow-sm"
-        >
-          <Send size={18} />
-        </button>
-      </div>
+          <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex justify-end">
+             <button onClick={onClose} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-200 font-medium">Cerrar</button>
+          </div>
+       </Card>
     </div>
   );
 };
-
-
-// --- MODALS ---
 
 const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: () => void, data: { projects: Project[], teams: Team[], workers: Worker[], tasks: Task[] } }) => {
   if (!node || !node.data) return null;
@@ -429,8 +365,11 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isAIEnabled, setIsAIEnabled] = useState(false);
-  const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-  const [pendingAIPrompt, setPendingAIPrompt] = useState('');
+
+  // AI Analysis Modal State
+  const [aiAnalysisResult, setAiAnalysisResult] = useState('');
+  const [isAiAnalysisOpen, setIsAiAnalysisOpen] = useState(false);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   // Graph Interaction State
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -456,10 +395,13 @@ export default function App() {
   const logout = () => setCurrentUser(null);
 
   // --- AI Triggers ---
-  const handleAITrigger = (prompt: string) => {
+  const runGeneralAnalysis = async (prompt: string) => {
     if (!isAIEnabled) return;
-    setPendingAIPrompt(prompt);
-    setIsAIChatOpen(true);
+    setIsAiLoading(true);
+    setIsAiAnalysisOpen(true);
+    const result = await generateAnalysis(prompt, { projects, workers, tasks });
+    setAiAnalysisResult(result);
+    setIsAiLoading(false);
   };
 
   // --- CRUD Handlers (Admin Only) ---
@@ -711,7 +653,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="p-4 border-l-4 border-blue-500 relative group">
                 {isAIEnabled && (
-                  <button onClick={() => handleAITrigger("Analiza el estado general de los proyectos activos y sugiere prioridades.")} className="absolute top-2 right-2 text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                  <button onClick={() => runGeneralAnalysis("Analiza el estado general de los proyectos activos y sugiere prioridades.")} className="absolute top-2 right-2 text-slate-300 hover:text-blue-500 p-1 opacity-0 group-hover:opacity-100 transition">
                      <Sparkles size={16} />
                   </button>
                 )}
@@ -720,7 +662,7 @@ export default function App() {
               </Card>
               <Card className="p-4 border-l-4 border-red-500 relative group">
                 {isAIEnabled && (
-                  <button onClick={() => handleAITrigger("Analiza los bloqueos críticos (ROJO) en las tareas y dame un plan de acción para resolverlos.")} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                  <button onClick={() => runGeneralAnalysis("Analiza los bloqueos críticos (ROJO) en las tareas y dame un plan de acción para resolverlos.")} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition">
                      <Sparkles size={16} />
                   </button>
                 )}
@@ -729,7 +671,7 @@ export default function App() {
               </Card>
               <Card className="p-4 border-l-4 border-green-500 relative group">
                 {isAIEnabled && (
-                  <button onClick={() => handleAITrigger("Analiza la carga de trabajo de los miembros y dime quién está disponible para recibir más tareas.")} className="absolute top-2 right-2 text-slate-300 hover:text-green-500 p-1 opacity-0 group-hover:opacity-100 transition">
+                  <button onClick={() => runGeneralAnalysis("Analiza la carga de trabajo de los miembros y dime quién está disponible para recibir más tareas.")} className="absolute top-2 right-2 text-slate-300 hover:text-green-500 p-1 opacity-0 group-hover:opacity-100 transition">
                      <Sparkles size={16} />
                   </button>
                 )}
@@ -764,7 +706,6 @@ export default function App() {
             addWorker={addWorker}
             editWorker={editWorker}
             isAIEnabled={isAIEnabled}
-            onAITrigger={handleAITrigger}
           />
         )}
 
@@ -776,7 +717,6 @@ export default function App() {
             editProject={editProject}
             addProject={addProject}
             isAIEnabled={isAIEnabled}
-            onAITrigger={handleAITrigger}
           />
         )}
 
@@ -788,6 +728,7 @@ export default function App() {
             workers={workers}
             addTeam={addTeam}
             updateTeam={updateTeam}
+            isAIEnabled={isAIEnabled}
           />
         )}
 
@@ -812,6 +753,7 @@ export default function App() {
             addRole={addRole}
             editRole={editRole}
             deleteRole={deleteRole}
+            isAIEnabled={isAIEnabled}
           />
         )}
 
@@ -839,28 +781,14 @@ export default function App() {
         />
       )}
 
-      {/* AI CHAT BUTTON & MODAL */}
-      {isAIEnabled && (
-        <>
-          <button 
-            onClick={() => setIsAIChatOpen(!isAIChatOpen)}
-            className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-xl hover:scale-105 transition-transform z-50 flex items-center gap-2 group"
-          >
-            {isAIChatOpen ? <X size={24} /> : <Bot size={24} />}
-            <span className={`max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold`}>
-              Nexus AI
-            </span>
-          </button>
-          
-          <AIAssistant 
-            isOpen={isAIChatOpen} 
-            onClose={() => setIsAIChatOpen(false)}
-            contextData={{ projects, teams, workers, tasks }}
-            pendingPrompt={pendingAIPrompt}
-            clearPendingPrompt={() => setPendingAIPrompt('')}
-          />
-        </>
-      )}
+      {/* AI ANALYSIS MODAL (Global) */}
+      <AIAnalysisModal 
+        isOpen={isAiAnalysisOpen}
+        onClose={() => setIsAiAnalysisOpen(false)}
+        result={aiAnalysisResult}
+        isLoading={isAiLoading}
+      />
+
     </div>
   );
 }
@@ -1093,9 +1021,10 @@ const AboutView = () => {
   );
 };
 
-const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin: boolean, roles: FunctionalRole[], addRole: (r: FunctionalRole) => void, editRole: (r: FunctionalRole) => void, deleteRole: (id: string) => void }) => {
+const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole, isAIEnabled }: any) => {
   const [editingRole, setEditingRole] = useState<FunctionalRole | null>(null);
   const [roleName, setRoleName] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1109,6 +1038,14 @@ const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin:
     }
     setRoleName('');
   };
+
+  const handleSuggestName = async () => {
+    if(!roleName) return;
+    setIsGenerating(true);
+    const suggestion = await generateText(`Sugiere un nombre de rol eclesiástico o corporativo mejorado para: "${roleName}". Solo devuelve el nombre.`);
+    if(suggestion) setRoleName(suggestion.trim());
+    setIsGenerating(false);
+  }
 
   const startEdit = (role: FunctionalRole) => {
     setEditingRole(role);
@@ -1127,13 +1064,23 @@ const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin:
           <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">
             {editingRole ? 'Editar Rol' : 'Crear Nuevo Rol'}
           </h3>
-          <form onSubmit={handleSubmit} className="flex gap-4">
-            <input 
-              className="flex-1 p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none"
-              placeholder="Nombre del Rol / Llamamiento (ej: Presidente de Quórum)"
-              value={roleName}
-              onChange={e => setRoleName(e.target.value)}
-            />
+          <form onSubmit={handleSubmit} className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="text-xs mb-1 block font-bold text-slate-500">Nombre del Rol</label>
+              <div className="flex gap-2">
+                <input 
+                  className="flex-1 p-2 border rounded dark:bg-slate-700 dark:border-slate-600 outline-none"
+                  placeholder="Ej: Presidente de Quórum"
+                  value={roleName}
+                  onChange={e => setRoleName(e.target.value)}
+                />
+                {isAIEnabled && (
+                  <button type="button" onClick={handleSuggestName} disabled={isGenerating || !roleName} className="p-2 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300 rounded hover:bg-purple-200 transition">
+                    <Sparkles size={18} className={isGenerating ? "animate-spin" : ""} />
+                  </button>
+                )}
+              </div>
+            </div>
             {editingRole && (
               <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300">
                 Cancelar
@@ -1178,13 +1125,12 @@ const RolesView = ({ isAdmin, roles, addRole, editRole, deleteRole }: { isAdmin:
 };
 
 const WorkersView = ({ 
-  isAdmin, workers, roles, addWorker, editWorker, isAIEnabled, onAITrigger 
-}: { 
-  isAdmin: boolean, workers: Worker[], roles: FunctionalRole[], addWorker: (w: Worker) => void, editWorker: (w: Worker) => void, isAIEnabled: boolean, onAITrigger: (prompt: string) => void 
-}) => {
+  isAdmin, workers, roles, addWorker, editWorker, isAIEnabled 
+}: any) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [workerForm, setWorkerForm] = useState<Partial<Worker>>({ intensity: 5, functionalRoles: [] });
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const startEdit = (worker: Worker) => {
     setWorkerForm({ ...worker });
@@ -1207,6 +1153,14 @@ const WorkersView = ({
         return { ...prev, functionalRoles: [...currentRoles, roleName] };
       }
     });
+  };
+
+  const handleGenerateProfile = async () => {
+    if(!workerForm.name || !workerForm.functionalRoles?.length) return;
+    setIsGenerating(true);
+    const notes = await generateText(`Genera notas de perfil profesional concisas para ${workerForm.name} con roles: ${workerForm.functionalRoles.join(', ')} y nivel de intensidad ${workerForm.intensity}/10. Enfócate en su impacto esperado.`);
+    if(notes) setWorkerForm(prev => ({...prev, externalNotes: notes}));
+    setIsGenerating(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1305,8 +1259,20 @@ const WorkersView = ({
                 ))}
               </select>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-1">Notas de Impacto (Privado)</label>
+            <div className="md:col-span-2 relative">
+              <div className="flex justify-between items-center mb-1">
+                 <label className="block text-sm font-medium">Notas de Impacto (Privado)</label>
+                 {isAIEnabled && workerForm.name && (
+                   <button 
+                     type="button" 
+                     onClick={handleGenerateProfile} 
+                     disabled={isGenerating}
+                     className="text-xs flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded hover:bg-purple-200"
+                   >
+                     <Sparkles size={12} className={isGenerating ? "animate-spin" : ""} /> Analizar Perfil con IA
+                   </button>
+                 )}
+              </div>
               <textarea 
                 className="w-full p-2 border rounded h-20 dark:bg-slate-700 dark:border-slate-600 outline-none"
                 placeholder="Notas visibles solo para admin..."
@@ -1360,15 +1326,6 @@ const WorkersView = ({
                  <div className={`w-6 h-6 rounded flex items-center justify-center text-white font-bold text-xs ${worker.intensity > 7 ? 'bg-red-500' : worker.intensity > 4 ? 'bg-blue-500' : 'bg-green-500'}`} title={`Intensidad: ${worker.intensity}`}>
                    {worker.intensity}
                  </div>
-                 {isAIEnabled && (
-                    <button 
-                      onClick={() => onAITrigger(`Analiza el perfil y la carga de trabajo de ${worker.name}. ¿Está sobrecargado? Sugiere recomendaciones.`)}
-                      className="text-slate-300 hover:text-purple-500 transition"
-                      title="Analizar con IA"
-                    >
-                       <Sparkles size={14} />
-                    </button>
-                 )}
               </div>
             </div>
             
@@ -1392,13 +1349,14 @@ const WorkersView = ({
 };
 
 const ProjectsView = ({ 
-  isAdmin, projects, workers, editProject, addProject, isAIEnabled, onAITrigger 
+  isAdmin, projects, workers, editProject, addProject, isAIEnabled 
 }: any) => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [tempProjectName, setTempProjectName] = useState('');
   const [tempProjectColor, setTempProjectColor] = useState('#3b82f6');
   const [tempProjectDesc, setTempProjectDesc] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Manage Members State
   const [managingMembersProject, setManagingMembersProject] = useState<Project | null>(null);
@@ -1418,6 +1376,14 @@ const ProjectsView = ({
     setTempProjectName('');
     setTempProjectDesc('');
   };
+
+  const handleGenerateDesc = async () => {
+    if(!tempProjectName) return;
+    setIsGenerating(true);
+    const desc = await generateText(`Genera una descripción breve (max 20 palabras) y profesional para un proyecto de organización llamado "${tempProjectName}".`);
+    if(desc) setTempProjectDesc(desc);
+    setIsGenerating(false);
+  }
 
   const openProjectEdit = (project: Project) => {
     setEditingProject(project);
@@ -1472,15 +1438,6 @@ const ProjectsView = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map((project: Project) => (
           <Card key={project.id} className="p-0 overflow-hidden hover:shadow-md transition group relative">
-             {isAIEnabled && (
-                <button 
-                  onClick={() => onAITrigger(`Dame un reporte de estado detallado del proyecto "${project.name}" y sugiere cómo optimizarlo.`)}
-                  className="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-slate-800/90 rounded-full text-slate-400 hover:text-blue-500 shadow-sm opacity-0 group-hover:opacity-100 transition"
-                  title="Generar Reporte IA"
-                >
-                   <Sparkles size={14} />
-                </button>
-             )}
              <div className="h-2" style={{ backgroundColor: project.color }}></div>
              <div className="p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -1524,7 +1481,12 @@ const ProjectsView = ({
                 <input className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempProjectName} onChange={e => setTempProjectName(e.target.value)} placeholder="Ej: Lanzamiento V2" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <div className="flex justify-between mb-1">
+                   <label className="block text-sm font-medium">Descripción</label>
+                   {isAIEnabled && tempProjectName && (
+                     <button type="button" onClick={handleGenerateDesc} disabled={isGenerating} className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded flex items-center gap-1"><Sparkles size={10} /> AI Sugerencia</button>
+                   )}
+                </div>
                 <textarea className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempProjectDesc} onChange={e => setTempProjectDesc(e.target.value)} placeholder="Breve descripción..." />
               </div>
               <div>
@@ -1560,7 +1522,12 @@ const ProjectsView = ({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Descripción</label>
+                <div className="flex justify-between mb-1">
+                   <label className="block text-sm font-medium">Descripción</label>
+                   {isAIEnabled && tempProjectName && (
+                     <button type="button" onClick={handleGenerateDesc} disabled={isGenerating} className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded flex items-center gap-1"><Sparkles size={10} /> AI Sugerencia</button>
+                   )}
+                </div>
                 <textarea 
                   className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600"
                   value={tempProjectDesc}
@@ -1642,7 +1609,7 @@ const ProjectsView = ({
 };
 
 // --- TEAMS VIEW (NEW SEPARATED VIEW) ---
-const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: any) => {
+const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam, isAIEnabled }: any) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id);
   const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -1650,6 +1617,7 @@ const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: a
   // Forms
   const [tempTeamName, setTempTeamName] = useState('');
   const [tempTeamMembers, setTempTeamMembers] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Effect to ensure valid selection if projects change
   useEffect(() => {
@@ -1671,6 +1639,14 @@ const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: a
     });
     setIsCreateTeamModalOpen(false);
     setTempTeamName('');
+  };
+
+  const handleGenerateName = async () => {
+    if(!activeProject) return;
+    setIsGenerating(true);
+    const name = await generateText(`Sugiere un nombre creativo y corto para un equipo o pareja de trabajo dentro del proyecto "${activeProject.name}". Solo devuelve el nombre.`);
+    if(name) setTempTeamName(name.trim());
+    setIsGenerating(false);
   };
 
   const openEditTeamMembers = (team: Team) => {
@@ -1773,7 +1749,12 @@ const TeamsView = ({ isAdmin, projects, teams, workers, addTeam, updateTeam }: a
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Nombre de la Pareja/Equipo</label>
-                <input className="w-full p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempTeamName} onChange={e => setTempTeamName(e.target.value)} placeholder="Ej: Pareja Delta" />
+                <div className="flex gap-2">
+                  <input className="flex-1 p-2 border rounded dark:bg-slate-700 dark:border-slate-600" value={tempTeamName} onChange={e => setTempTeamName(e.target.value)} placeholder="Ej: Pareja Delta" />
+                  {isAIEnabled && (
+                    <button onClick={handleGenerateName} disabled={isGenerating} className="p-2 bg-purple-100 text-purple-600 rounded"><Sparkles size={18} className={isGenerating ? "animate-spin" : ""}/></button>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button onClick={() => setIsCreateTeamModalOpen(false)} className="px-3 py-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded">Cancelar</button>
@@ -1953,7 +1934,7 @@ const TasksView: React.FC<TasksViewProps> = ({ isAdmin, tasks, projects, teams, 
     if (!formTitle || !formProjectId) return;
     setIsGeneratingNotes(true);
     const projName = projects.find(p => p.id === formProjectId)?.name || "Proyecto";
-    const notes = await generateTaskNotes(formTitle, projName);
+    const notes = await generateText(`Genera notas breves y profesionales para una tarea titulada "${formTitle}" dentro del proyecto "${projName}".`);
     setFormNotes(prev => prev ? prev + "\n\n[IA Sugerencia]:\n" + notes : notes);
     setIsGeneratingNotes(false);
   };
