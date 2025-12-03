@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, CheckCircle, Clock, ChevronDown, Plus, Trash2, Shield, Menu,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Github, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -93,41 +93,91 @@ const NodeDetailsModal = ({ node, onClose, data }: { node: GraphNode, onClose: (
     if (type === 'WORKER') {
       const worker = detailData as Worker;
       const activeTasks = data.tasks.filter(t => t.workerId === worker.id);
+      const intensityColor = worker.intensity > 7 ? 'bg-red-500' : worker.intensity > 4 ? 'bg-blue-500' : 'bg-green-500';
+      
       return (
-        <div className="space-y-4">
-           <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-              <span className="text-sm font-medium">Nivel de Intensidad</span>
-              <span className={`font-bold ${worker.intensity > 7 ? 'text-red-500' : 'text-green-500'}`}>{worker.intensity}/10</span>
+        <div className="space-y-5">
+           {/* Intensity Section */}
+           <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
+              <div className="flex items-center justify-between mb-2">
+                 <span className="text-sm font-medium flex items-center gap-2">
+                    <Activity size={16} className="text-slate-500" />
+                    Nivel de Intensidad
+                 </span>
+                 <span className="font-bold text-slate-700 dark:text-slate-200">{worker.intensity}/10</span>
+              </div>
+              <div className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-full overflow-hidden">
+                 <div 
+                   className={`h-full ${intensityColor} transition-all duration-500`} 
+                   style={{ width: `${worker.intensity * 10}%` }}
+                 ></div>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                 <span>Baja Carga</span>
+                 <span>Sobrecarga</span>
+              </div>
            </div>
 
-           <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-             <span className="text-xs font-bold text-slate-500 uppercase block mb-1">Roles / Llamamientos</span>
-             <div className="flex flex-wrap gap-1">
+           {/* Roles Section */}
+           <div>
+             <span className="text-xs font-bold text-slate-500 uppercase block mb-2">Roles / Llamamientos</span>
+             <div className="flex flex-wrap gap-2">
                {worker.functionalRoles.map(r => (
-                 <span key={r} className="px-2 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded text-xs">
+                 <span key={r} className="px-2.5 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 rounded text-xs font-medium border border-blue-200 dark:border-blue-800">
                    {r}
                  </span>
                ))}
-               {worker.functionalRoles.length === 0 && <span className="text-sm text-slate-400">Sin roles asignados</span>}
+               {worker.functionalRoles.length === 0 && <span className="text-sm text-slate-400 italic">Sin roles asignados</span>}
              </div>
            </div>
            
+           {/* Tasks Section */}
            <div>
-              <h4 className="font-bold text-sm uppercase text-slate-500 mb-2">Tareas Asignadas ({activeTasks.length})</h4>
-              <ul className="space-y-2 max-h-40 overflow-y-auto">
-                 {activeTasks.map(t => (
-                   <li key={t.id} className="text-sm p-2 border border-slate-100 dark:border-slate-600 rounded flex justify-between items-center">
-                      <span className="truncate max-w-[150px]">{t.title}</span>
-                      <Badge status={t.status} />
+              <div className="flex justify-between items-center mb-2">
+                 <h4 className="font-bold text-sm uppercase text-slate-500">Tareas Asignadas</h4>
+                 <span className="text-xs bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full font-bold">{activeTasks.length}</span>
+              </div>
+              
+              <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                 {activeTasks.map(t => {
+                   const proj = data.projects.find(p => p.id === t.projectId);
+                   return (
+                    <li key={t.id} className="text-sm p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 hover:shadow-sm transition">
+                        <div className="flex justify-between items-start mb-1">
+                           <div className="flex items-center gap-2">
+                              {proj && (
+                                <span 
+                                  className="w-2 h-2 rounded-full shrink-0" 
+                                  style={{ backgroundColor: proj.color }}
+                                  title={`Proyecto: ${proj.name}`}
+                                ></span>
+                              )}
+                              <span className="font-medium text-slate-800 dark:text-slate-200 line-clamp-1">{t.title}</span>
+                           </div>
+                           <Badge status={t.status} />
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 pl-4">
+                           <span>{proj?.name}</span>
+                           {t.dueDate && (
+                             <span className={new Date(t.dueDate) < new Date() ? 'text-red-500 font-bold' : ''}>
+                               {new Date(t.dueDate).toLocaleDateString()}
+                             </span>
+                           )}
+                        </div>
+                    </li>
+                   );
+                 })}
+                 {activeTasks.length === 0 && (
+                   <li className="p-4 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-lg text-slate-400 text-sm">
+                     Este miembro no tiene tareas activas.
                    </li>
-                 ))}
-                 {activeTasks.length === 0 && <li className="text-sm text-slate-400 italic">Sin tareas activas.</li>}
+                 )}
               </ul>
            </div>
            
            {worker.managerId && (
-             <div className="text-xs text-slate-400 mt-2">
-               Reporta a: <span className="font-medium text-slate-600 dark:text-slate-300">{data.workers.find(w => w.id === worker.managerId)?.name}</span>
+             <div className="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+               Reporta jerárquicamente a: <span className="font-medium text-slate-600 dark:text-slate-300">{data.workers.find(w => w.id === worker.managerId)?.name}</span>
              </div>
            )}
         </div>
