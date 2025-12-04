@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Project, Team, Worker, Task, GraphNode } from '../types';
-import { Filter, X, AlertTriangle } from 'lucide-react';
+import { Filter, X, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 
 interface OrgChartProps {
   projects: Project[];
@@ -51,7 +51,7 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
   useEffect(() => {
     if (!projects.length || !svgRef.current) return;
 
-    // 1. Data Transformation with Filtering
+    // 1. Data Transformation with Strict Filtering (Pruning)
     const buildHierarchy = (): GraphNode => {
       const root: GraphNode = { name: "Nexus", type: "ROOT", children: [] };
       
@@ -62,13 +62,11 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
 
       filteredProjects.forEach(proj => {
         const projNode: GraphNode = { name: proj.name, type: "PROJECT", data: proj, children: [] };
+        let projHasRelevantChildren = false;
         
-        // Find teams for this project
+        // --- 1. PROCESS TEAMS ---
         const projTeams = teams.filter(t => t.projectId === proj.id);
         
-        // Track if project has relevant children to decide whether to show it (in strict filter mode)
-        let hasRelevantChildren = false;
-
         projTeams.forEach(team => {
           const teamNode: GraphNode = { name: team.name, type: "TEAM", data: team, children: [] };
           let teamHasRelevantChildren = false;
@@ -79,21 +77,21 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
 
             const worker = workers.find(w => w.id === memberId);
             if (worker) {
-              // Filter Tasks
+              // Get Tasks for this worker in this specific team context
               let workerTasks = tasks.filter(t => t.workerId === worker.id && t.projectId === proj.id && t.teamId === team.id);
               
+              // Filter Tasks by Status
               if (filterStatus !== 'ALL') {
                 workerTasks = workerTasks.filter(t => t.status === filterStatus);
               }
 
-              // Strict Pruning:
-              // If filtering by STATUS, only show worker if they have tasks matching that status.
-              // If filtering by MEMBER only, show worker even if no tasks (context).
-              // If filtering by PROJECT only, show worker even if no tasks.
+              // STRICT PRUNING RULE:
+              // If filtering by STATUS, only show worker if they have matching tasks.
               if (filterStatus !== 'ALL' && workerTasks.length === 0) {
                  return; 
               }
-
+              // If filtering by MEMBER, we already checked above.
+              
               const taskNodes: GraphNode[] = workerTasks.map(task => ({
                 name: task.title,
                 type: "TASK",
@@ -101,8 +99,6 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                 children: []
               }));
               
-              // If we are filtering by status, show the worker only if tasks exist. 
-              // If we are not filtering by status, show worker anyway (unless filtered by member)
               teamNode.children?.push({
                 name: worker.name,
                 type: "WORKER",
@@ -116,11 +112,11 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
           
           if (teamHasRelevantChildren) {
              projNode.children?.push(teamNode);
-             hasRelevantChildren = true;
+             projHasRelevantChildren = true;
           }
         });
 
-        // DIRECT MEMBERS (Not in a Team)
+        // --- 2. PROCESS DIRECT MEMBERS (Not in a Team) ---
         if (proj.memberIds && proj.memberIds.length > 0) {
           proj.memberIds.forEach(memberId => {
              // Filter Member
@@ -153,21 +149,23 @@ export const OrgChart: React.FC<OrgChartProps> = ({ projects, teams, workers, ta
                       data: worker,
                       children: taskNodes
                     });
-                    hasRelevantChildren = true;
+                    projHasRelevantChildren = true;
                 }
              }
           });
         }
         
-        // Decision to add Project Node to Root
-        // If NO filters are applied, show everything (even empty projects)
-        // If filters ARE applied, only show projects with relevant content found
+        // --- 3. DECISION TO RENDER PROJECT ---
+        // If NO filters are applied, show everything (even empty projects structure)
         if (!hasActiveFilters) {
            root.children?.push(projNode);
-        } else if (hasRelevantChildren) {
+        } 
+        // If filters ARE applied, only show projects with relevant content found
+        else if (projHasRelevantChildren) {
            root.children?.push(projNode);
-        } else if (filterProject !== 'ALL' && filterMember === 'ALL' && filterStatus === 'ALL') {
-           // Special case: If I explicitly selected a project, show it even if empty to confirm selection
+        } 
+        // Special case: If I explicitly selected a project via dropdown, show it even if empty to confirm selection
+        else if (filterProject !== 'ALL' && filterProject === proj.id && filterMember === 'ALL' && filterStatus === 'ALL') {
            root.children?.push(projNode);
         }
       });

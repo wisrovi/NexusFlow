@@ -12,7 +12,7 @@ import {
   LayoutDashboard, Users, FolderKanban, LogOut, 
   AlertTriangle, Clock, ChevronDown, Plus, Trash2, Shield,
   Pencil, X, Save, ClipboardList, Filter, Layers, Settings, UserPlus, Calendar, Sun, Moon, Info, Tag, Download, Bell, Globe, UserCheck, Linkedin, Briefcase, Upload, StickyNote, User as UserIcon,
-  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github, BrainCircuit, MonitorPlay, ChevronRight, ChevronLeft
+  LayoutList, LayoutGrid, Circle, ArrowRightCircle, CheckSquare, Activity, Sparkles, Send, Bot, Github, BrainCircuit, MonitorPlay, ChevronRight, ChevronLeft, Code
 } from 'lucide-react';
 
 // --- Components Helpers ---
@@ -399,6 +399,12 @@ const PresentationMode = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
       subtitle: "Asistente Nexus (Gemini)",
       icon: <Sparkles size={120} className="text-pink-500" />,
       content: "Inteligencia Artificial integrada para analizar bloqueos, sugerir perfiles de miembros, redactar descripciones de proyectos y proponer planes de acción."
+    },
+    {
+      title: "Sobre el Autor",
+      subtitle: "William Rodriguez (Wisrovi)",
+      icon: <Code size={120} className="text-cyan-500" />,
+      content: "Full Stack Developer & System Architect experto en React, TypeScript y Visualización de Datos. NexusFlow demuestra la integración de IA y UX moderna para la toma de decisiones."
     }
   ];
 
